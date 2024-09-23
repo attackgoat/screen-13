@@ -356,6 +356,12 @@ impl Window {
     }
 }
 
+impl AsRef<EventLoop<()>> for Window {
+    fn as_ref(&self) -> &EventLoop<()> {
+        &self.event_loop
+    }
+}
+
 pub struct WindowBuilder {
     attributes: WindowAttributes,
     cmd_buf_count: usize,

@@ -9,8 +9,8 @@ readme = "README.md"
 [dependencies]
 bytemuck = "1.14"
 
-imgui = { git = "https://github.com/imgui-rs/imgui-rs", rev = "ca05418cb449dadaabf014487c5c965908dfcbdd" } 
-imgui-winit-support = { git = "https://github.com/imgui-rs/imgui-rs", rev = "ca05418cb449dadaabf014487c5c965908dfcbdd" }
+imgui = "0.12" 
+imgui-winit-support = { git = "https://github.com/julcst/imgui-winit-support.git", rev = "29584c863c5517a7f30e09205b84e1601f4ddb92" } # TODO: https://github.com/imgui-rs/imgui-rs/issues/781
 
 inline-spirv = "0.2"
 screen-13 = { path = "../.." }

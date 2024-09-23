@@ -228,6 +228,7 @@ pub trait ResolverPool:
     Pool<DescriptorPoolInfo, DescriptorPool>
     + Pool<RenderPassInfo, RenderPass>
     + Pool<CommandBufferInfo, CommandBuffer>
+    + Send
 {
 }
 
@@ -235,5 +236,6 @@ impl<T> ResolverPool for T where
     T: Pool<DescriptorPoolInfo, DescriptorPool>
         + Pool<RenderPassInfo, RenderPass>
         + Pool<CommandBufferInfo, CommandBuffer>
+        + Send
 {
 }

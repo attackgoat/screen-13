@@ -6,6 +6,7 @@ pub use egui;
 
 use {
     bytemuck::cast_slice,
+    egui_winit::winit::{event::Event, event_loop::EventLoop, window::Window},
     screen_13::prelude::*,
     std::{borrow::Cow, collections::HashMap, sync::Arc},
 };
@@ -21,10 +22,7 @@ pub struct Egui {
 }
 
 impl Egui {
-    pub fn new(
-        device: &Arc<Device>,
-        event_loop: &egui_winit::winit::event_loop::EventLoopWindowTarget<()>,
-    ) -> Self {
+    pub fn new(device: &Arc<Device>, event_loop: &EventLoop<()>) -> Self {
         let ppl = Arc::new(
             GraphicPipeline::create(
                 device,
@@ -58,9 +56,6 @@ impl Egui {
         );
 
         let ctx = egui::Context::default();
-        let native_pixels_per_point = event_loop
-            .primary_monitor()
-            .map(|monitor| monitor.scale_factor() as f32);
         let max_texture_side = Some(
             device
                 .physical_device
@@ -72,7 +67,8 @@ impl Egui {
             ctx.clone(),
             egui::ViewportId::ROOT,
             event_loop,
-            native_pixels_per_point,
+            None,
+            None,
             max_texture_side,
         );
 
