@@ -142,7 +142,11 @@ impl ComputePipeline {
                 .stage(stage_create_info)
                 .layout(layout);
             let pipeline = device
-                .create_compute_pipelines(vk::PipelineCache::null(), from_ref(&pipeline_info), None)
+                .create_compute_pipelines(
+                    Device::pipeline_cache(&device),
+                    from_ref(&pipeline_info),
+                    None,
+                )
                 .map_err(|(_, err)| {
                     warn!("{err}");
 
