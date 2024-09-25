@@ -148,7 +148,7 @@ fn create_blas(
     device: &Arc<Device>,
     models: &[&Model],
 ) -> Result<Arc<AccelerationStructure>, DriverError> {
-    let info = AccelerationStructureGeometryInfo::new_blas(
+    let info = AccelerationStructureGeometryInfo::blas(
         models
             .iter()
             .map(|model| {
@@ -351,7 +351,7 @@ fn create_tlas(
         buffer
     });
 
-    let info = AccelerationStructureGeometryInfo::new_tlas([(
+    let info = AccelerationStructureGeometryInfo::tlas([(
         AccelerationStructureGeometry::opaque(
             2,
             AccelerationStructureGeometryData::instances(Buffer::device_address(&instance_buf)),

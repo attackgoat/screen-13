@@ -106,7 +106,6 @@ fn main() -> anyhow::Result<()> {
 
     let &RayTraceProperties {
         shader_group_base_alignment,
-        shader_group_handle_alignment,
         shader_group_handle_size,
         ..
     } = window
@@ -121,15 +120,17 @@ fn main() -> anyhow::Result<()> {
     // Setup a shader binding table
     // ------------------------------------------------------------------------------------------ //
 
-    let sbt_handle_size = shader_group_handle_size.next_multiple_of(shader_group_handle_alignment);
-    let sbt_rgen_size = sbt_handle_size;
-    let sbt_hit_size = sbt_handle_size;
-    let sbt_miss_size = 2 * sbt_handle_size;
+    let sbt_rgen_size = shader_group_handle_size;
+    let sbt_hit_start = sbt_rgen_size.next_multiple_of(shader_group_base_alignment);
+    let sbt_hit_size = shader_group_handle_size;
+    let sbt_miss_start =
+        (sbt_hit_start + sbt_hit_size).next_multiple_of(shader_group_base_alignment);
+    let sbt_miss_size = shader_group_handle_size;
     let sbt_buf = Arc::new({
         let mut buf = Buffer::create(
             &window.device,
             BufferInfo::host_mem(
-                (sbt_rgen_size + sbt_hit_size + sbt_miss_size) as _,
+                (sbt_miss_start + sbt_miss_size) as _,
                 vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             )
@@ -138,36 +139,35 @@ fn main() -> anyhow::Result<()> {
         )
         .unwrap();
 
-        let mut data = Buffer::mapped_slice_mut(&mut buf);
-        data.fill(0);
+        let data = Buffer::mapped_slice_mut(&mut buf);
 
         let rgen_handle = RayTracePipeline::group_handle(&ray_trace_pipeline, 0)?;
         data[0..rgen_handle.len()].copy_from_slice(rgen_handle);
-        data = &mut data[sbt_rgen_size as _..];
 
-        // If hit/miss had different strides we would need to iterate each here
-        for idx in 1..3 {
-            let handle = RayTracePipeline::group_handle(&ray_trace_pipeline, idx)?;
-            data[0..handle.len()].copy_from_slice(handle);
-            data = &mut data[sbt_handle_size as _..];
-        }
+        let hit_handle = RayTracePipeline::group_handle(&ray_trace_pipeline, 1)?;
+        data[sbt_hit_start as usize..sbt_hit_start as usize + hit_handle.len()]
+            .copy_from_slice(hit_handle);
+
+        let miss_handle = RayTracePipeline::group_handle(&ray_trace_pipeline, 2)?;
+        data[sbt_miss_start as usize..sbt_miss_start as usize + miss_handle.len()]
+            .copy_from_slice(miss_handle);
 
         buf
     });
     let sbt_address = Buffer::device_address(&sbt_buf);
     let sbt_rgen = vk::StridedDeviceAddressRegionKHR {
         device_address: sbt_address,
-        stride: sbt_rgen_size as _,
+        stride: shader_group_handle_size as _,
         size: sbt_rgen_size as _,
     };
     let sbt_hit = vk::StridedDeviceAddressRegionKHR {
-        device_address: sbt_rgen.device_address + sbt_rgen_size as vk::DeviceAddress,
-        stride: sbt_handle_size as _,
+        device_address: sbt_address + sbt_hit_start as vk::DeviceAddress,
+        stride: shader_group_handle_size as _,
         size: sbt_hit_size as _,
     };
     let sbt_miss = vk::StridedDeviceAddressRegionKHR {
-        device_address: sbt_hit.device_address + sbt_hit_size as vk::DeviceAddress,
-        stride: sbt_handle_size as _,
+        device_address: sbt_address + sbt_miss_start as vk::DeviceAddress,
+        stride: shader_group_handle_size as _,
         size: sbt_miss_size as _,
     };
     let sbt_callable = vk::StridedDeviceAddressRegionKHR::default();
