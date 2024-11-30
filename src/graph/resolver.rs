@@ -907,8 +907,7 @@ impl Resolver {
 
         let mut subpasses = Vec::<SubpassInfo>::with_capacity(pass.execs.len());
 
-        // Add attachments: format, sample count, layout, and load ops (using the first
-        // execution)
+        // Add load op attachments using the first execution
         {
             let first_exec = &pass.execs[0];
 
@@ -919,7 +918,6 @@ impl Resolver {
                 attachment.sample_count = cleared_attachment.sample_count;
                 attachment.load_op = vk::AttachmentLoadOp::CLEAR;
                 attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
             }
 
             // Loaded color attachments
@@ -929,25 +927,6 @@ impl Resolver {
                 attachment.sample_count = loaded_attachment.sample_count;
                 attachment.load_op = vk::AttachmentLoadOp::LOAD;
                 attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Resolved color attachments
-            for (dst_attachment_idx, (resolved_attachment, _)) in &first_exec.color_resolves {
-                let attachment = &mut attachments[*dst_attachment_idx as usize];
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Stored color attachments
-            for (attachment_idx, stored_attachment) in &first_exec.color_stores {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
             }
 
             // Cleared depth/stencil attachment
@@ -975,7 +954,6 @@ impl Resolver {
 
                     vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
                 };
-                attachment.final_layout = attachment.initial_layout;
             } else if let Some(loaded_attachment) = first_exec.depth_stencil_load {
                 // Loaded depth/stencil attachment
                 let attachment = &mut attachments[color_attachment_count];
@@ -1001,65 +979,26 @@ impl Resolver {
 
                     vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
                 };
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Stored depth/stencil attachment
-            if let Some(stored_attachment) = first_exec.depth_stencil_store {
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.initial_layout = if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Resolved depth/stencil attachment
-            if let Some((resolved_attachment, ..)) = first_exec.depth_stencil_resolve {
-                let attachment = attachments.last_mut().unwrap();
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.initial_layout = if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-                attachment.final_layout = attachment.initial_layout;
             }
         }
 
-        // Add attachments: store ops and final layout (using the last pass)
+        // Add store op attachments using the last execution
         {
             let last_exec = pass.execs.last().unwrap();
 
             // Resolved color attachments
-            for attachment_idx in last_exec.color_resolves.keys() {
+            for (attachment_idx, (resolved_attachment, _)) in &last_exec.color_resolves {
                 let attachment = &mut attachments[*attachment_idx as usize];
+                attachment.fmt = resolved_attachment.format;
+                attachment.sample_count = resolved_attachment.sample_count;
                 attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
             }
 
             // Stored color attachments
-            for attachment_idx in last_exec.color_stores.keys() {
+            for (attachment_idx, stored_attachment) in &last_exec.color_stores {
                 let attachment = &mut attachments[*attachment_idx as usize];
+                attachment.fmt = stored_attachment.format;
+                attachment.sample_count = stored_attachment.sample_count;
                 attachment.store_op = vk::AttachmentStoreOp::STORE;
                 attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
             }
@@ -1067,6 +1006,8 @@ impl Resolver {
             // Stored depth/stencil attachment
             if let Some(stored_attachment) = last_exec.depth_stencil_store {
                 let attachment = &mut attachments[color_attachment_count];
+                attachment.fmt = stored_attachment.format;
+                attachment.sample_count = stored_attachment.sample_count;
                 attachment.final_layout = if stored_attachment
                     .aspect_mask
                     .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -1092,6 +1033,8 @@ impl Resolver {
             // Resolved depth/stencil attachment
             if let Some((resolved_attachment, ..)) = last_exec.depth_stencil_resolve {
                 let attachment = attachments.last_mut().unwrap();
+                attachment.fmt = resolved_attachment.format;
+                attachment.sample_count = resolved_attachment.sample_count;
                 attachment.final_layout = if resolved_attachment
                     .aspect_mask
                     .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -1105,6 +1048,16 @@ impl Resolver {
                 } else {
                     vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
                 };
+            }
+        }
+
+        for attachment in &mut attachments {
+            if attachment.load_op == vk::AttachmentLoadOp::DONT_CARE {
+                attachment.initial_layout = attachment.final_layout;
+            } else if attachment.store_op == vk::AttachmentStoreOp::DONT_CARE
+                && attachment.stencil_store_op == vk::AttachmentStoreOp::DONT_CARE
+            {
+                attachment.final_layout = attachment.initial_layout;
             }
         }
 
