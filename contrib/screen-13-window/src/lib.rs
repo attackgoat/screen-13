@@ -231,6 +231,7 @@ impl Window {
 
                 if !active_window.draw(&self.device, &mut self.draw_fn) {
                     event_loop.exit();
+                    return;
                 }
 
                 self.active_window = Some(active_window);
