@@ -25,7 +25,7 @@ pub(crate) struct AttachmentInfo {
     pub final_layout: vk::ImageLayout,
 }
 
-impl<'a> From<AttachmentInfo> for vk::AttachmentDescription2<'a> {
+impl From<AttachmentInfo> for vk::AttachmentDescription2<'_> {
     fn from(value: AttachmentInfo) -> Self {
         vk::AttachmentDescription2::default()
             .flags(value.flags)
@@ -63,7 +63,7 @@ pub(crate) struct AttachmentRef {
     pub layout: vk::ImageLayout,
 }
 
-impl<'a> From<AttachmentRef> for vk::AttachmentReference2<'a> {
+impl From<AttachmentRef> for vk::AttachmentReference2<'_> {
     fn from(attachment_ref: AttachmentRef) -> Self {
         vk::AttachmentReference2::default()
             .attachment(attachment_ref.attachment)
@@ -527,7 +527,7 @@ impl SubpassDependency {
     }
 }
 
-impl<'a> From<SubpassDependency> for vk::SubpassDependency2<'a> {
+impl From<SubpassDependency> for vk::SubpassDependency2<'_> {
     fn from(value: SubpassDependency) -> Self {
         vk::SubpassDependency2::default()
             .src_subpass(value.src_subpass)

@@ -52,5 +52,7 @@ fn main() -> Result<(), DriverError> {
     println!("Waited {}μs", (Instant::now() - started).as_micros());
 
     // It is now safe to read back what we did!
-    Ok(println!("{:?}", Buffer::mapped_slice(&dst_buf)))
+    println!("{:?}", Buffer::mapped_slice(&dst_buf));
+
+    Ok(())
 }

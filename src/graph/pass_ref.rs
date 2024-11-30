@@ -78,7 +78,7 @@ pub struct Acceleration<'a> {
     device: &'a Device,
 }
 
-impl<'a> Acceleration<'a> {
+impl Acceleration<'_> {
     /// Build an acceleration structure.
     ///
     /// Requires a scratch buffer which was created with the following requirements:
@@ -1053,7 +1053,7 @@ index!(Image, Image);
 index!(ImageLease, Image);
 index!(SwapchainImage, Image);
 
-impl<'a> Index<AnyAccelerationStructureNode> for Bindings<'a> {
+impl Index<AnyAccelerationStructureNode> for Bindings<'_> {
     type Output = AccelerationStructure;
 
     fn index(&self, node: AnyAccelerationStructureNode) -> &Self::Output {
@@ -1074,7 +1074,7 @@ impl<'a> Index<AnyAccelerationStructureNode> for Bindings<'a> {
     }
 }
 
-impl<'a> Index<AnyBufferNode> for Bindings<'a> {
+impl Index<AnyBufferNode> for Bindings<'_> {
     type Output = Buffer;
 
     fn index(&self, node: AnyBufferNode) -> &Self::Output {
@@ -1091,7 +1091,7 @@ impl<'a> Index<AnyBufferNode> for Bindings<'a> {
     }
 }
 
-impl<'a> Index<AnyImageNode> for Bindings<'a> {
+impl Index<AnyImageNode> for Bindings<'_> {
     type Output = Image;
 
     fn index(&self, node: AnyImageNode) -> &Self::Output {
@@ -1149,7 +1149,7 @@ pub struct Compute<'a> {
     pipeline: Arc<ComputePipeline>,
 }
 
-impl<'a> Compute<'a> {
+impl Compute<'_> {
     /// [Dispatch] compute work items.
     ///
     /// When the command is executed, a global workgroup consisting of
@@ -1590,7 +1590,7 @@ pub struct Draw<'a> {
     pipeline: Arc<GraphicPipeline>,
 }
 
-impl<'a> Draw<'a> {
+impl Draw<'_> {
     /// Bind an index buffer to the current pass.
     ///
     /// # Examples
@@ -3025,7 +3025,7 @@ where
     }
 }
 
-impl<'a> PipelinePassRef<'a, ComputePipeline> {
+impl PipelinePassRef<'_, ComputePipeline> {
     /// Begin recording a computing command buffer.
     pub fn record_compute(
         mut self,
@@ -3059,7 +3059,7 @@ impl<'a> PipelinePassRef<'a, ComputePipeline> {
     }
 }
 
-impl<'a> PipelinePassRef<'a, GraphicPipeline> {
+impl PipelinePassRef<'_, GraphicPipeline> {
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
     ///
@@ -4217,7 +4217,7 @@ impl<'a> PipelinePassRef<'a, GraphicPipeline> {
     }
 }
 
-impl<'a> PipelinePassRef<'a, RayTracePipeline> {
+impl PipelinePassRef<'_, RayTracePipeline> {
     /// Begin recording a ray tracing command buffer.
     pub fn record_ray_trace(
         mut self,
@@ -4302,7 +4302,7 @@ pub struct RayTrace<'a> {
     pipeline: Arc<RayTracePipeline>,
 }
 
-impl<'a> RayTrace<'a> {
+impl RayTrace<'_> {
     /// Updates push constants.
     ///
     /// Push constants represent a high speed path to modify constant data in pipelines that is

@@ -391,13 +391,13 @@ impl<T> AsRef<AccelerationStructureGeometry> for (AccelerationStructureGeometry,
     }
 }
 
-impl<'a, 'b> From<&'b AccelerationStructureGeometry> for vk::AccelerationStructureGeometryKHR<'a> {
+impl<'b> From<&'b AccelerationStructureGeometry> for vk::AccelerationStructureGeometryKHR<'_> {
     fn from(&value: &'b AccelerationStructureGeometry) -> Self {
         value.into()
     }
 }
 
-impl<'a> From<AccelerationStructureGeometry> for vk::AccelerationStructureGeometryKHR<'a> {
+impl From<AccelerationStructureGeometry> for vk::AccelerationStructureGeometryKHR<'_> {
     fn from(value: AccelerationStructureGeometry) -> Self {
         Self::default()
             .flags(value.flags)
@@ -548,7 +548,7 @@ impl From<AccelerationStructureGeometryData> for vk::GeometryTypeKHR {
     }
 }
 
-impl<'a> From<AccelerationStructureGeometryData> for vk::AccelerationStructureGeometryDataKHR<'a> {
+impl From<AccelerationStructureGeometryData> for vk::AccelerationStructureGeometryDataKHR<'_> {
     fn from(value: AccelerationStructureGeometryData) -> Self {
         match value {
             AccelerationStructureGeometryData::AABBs { addr, stride } => Self {
