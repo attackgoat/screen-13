@@ -927,7 +927,7 @@ macro_rules! bind {
         paste::paste! {
             impl<'a> Bind<PassRef<'a>, PipelinePassRef<'a, [<$name Pipeline>]>> for &'a Arc<[<$name Pipeline>]> {
                 // TODO: Allow binding as explicit secondary command buffers? like with compute/raytrace stuff
-                fn bind(self, mut pass: PassRef<'a>) -> PipelinePassRef<'_, [<$name Pipeline>]> {
+                fn bind(self, mut pass: PassRef<'a>) -> PipelinePassRef<'a, [<$name Pipeline>]> {
                     let pass_ref = pass.as_mut();
                     if pass_ref.execs.last().unwrap().pipeline.is_some() {
                         // Binding from PipelinePass -> PipelinePass (changing shaders)
