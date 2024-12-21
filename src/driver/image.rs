@@ -689,8 +689,8 @@ impl From<ImageViewInfo> for vk::ImageSubresourceRange {
             aspect_mask: info.aspect_mask,
             base_mip_level: info.base_mip_level,
             base_array_layer: info.base_array_layer,
-            layer_count: info.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS),
-            level_count: info.mip_level_count.unwrap_or(vk::REMAINING_MIP_LEVELS),
+            layer_count: info.array_layer_count,
+            level_count: info.mip_level_count,
         }
     }
 }
@@ -770,8 +770,8 @@ impl ImageView {
                 aspect_mask: info.aspect_mask,
                 base_array_layer: info.base_array_layer,
                 base_mip_level: info.base_mip_level,
-                level_count: info.mip_level_count.unwrap_or(vk::REMAINING_MIP_LEVELS),
-                layer_count: info.array_layer_count.unwrap_or(vk::REMAINING_ARRAY_LAYERS),
+                level_count: info.mip_level_count,
+                layer_count: info.array_layer_count,
             });
 
         let image_view =
@@ -809,9 +809,9 @@ impl Drop for ImageView {
 pub struct ImageViewInfo {
     /// The number of layers that will be contained in the view.
     ///
-    /// The default value of `None` equates to `vk::REMAINING_ARRAY_LAYERS`.
-    #[builder(default)]
-    pub array_layer_count: Option<u32>,
+    /// The default value is `vk::REMAINING_ARRAY_LAYERS`.
+    #[builder(default = vk::REMAINING_ARRAY_LAYERS)]
+    pub array_layer_count: u32,
 
     /// The portion of the image that will be contained in the view.
     pub aspect_mask: vk::ImageAspectFlags,
@@ -829,9 +829,9 @@ pub struct ImageViewInfo {
 
     /// The number of mip levels that will be contained in the view.
     ///
-    /// The default value of `None` equates to `vk::REMAINING_MIP_LEVELS`.
-    #[builder(default)]
-    pub mip_level_count: Option<u32>,
+    /// The default value is `vk::REMAINING_MIP_LEVELS`.
+    #[builder(default = vk::REMAINING_MIP_LEVELS)]
+    pub mip_level_count: u32,
 
     /// The basic dimensionality of the view.
     pub ty: ImageType,
@@ -846,12 +846,12 @@ impl ImageViewInfo {
     #[inline(always)]
     pub const fn new(fmt: vk::Format, ty: ImageType) -> ImageViewInfo {
         Self {
-            array_layer_count: None,
+            array_layer_count: vk::REMAINING_ARRAY_LAYERS,
             aspect_mask: format_aspect_mask(fmt),
             base_array_layer: 0,
             base_mip_level: 0,
             fmt,
-            mip_level_count: None,
+            mip_level_count: vk::REMAINING_MIP_LEVELS,
             ty,
         }
     }
@@ -880,12 +880,12 @@ impl ImageViewInfo {
 impl From<ImageInfo> for ImageViewInfo {
     fn from(info: ImageInfo) -> Self {
         Self {
-            array_layer_count: Some(info.array_elements),
+            array_layer_count: info.array_elements,
             aspect_mask: format_aspect_mask(info.fmt),
             base_array_layer: 0,
             base_mip_level: 0,
             fmt: info.fmt,
-            mip_level_count: Some(info.mip_level_count),
+            mip_level_count: info.mip_level_count,
             ty: info.ty,
         }
     }

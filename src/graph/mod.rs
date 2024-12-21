@@ -80,16 +80,12 @@ struct Attachment {
 impl Attachment {
     fn new(image_view_info: ImageViewInfo, sample_count: SampleCount, target: NodeIndex) -> Self {
         Self {
-            array_layer_count: image_view_info
-                .array_layer_count
-                .unwrap_or(vk::REMAINING_ARRAY_LAYERS),
+            array_layer_count: image_view_info.array_layer_count,
             aspect_mask: image_view_info.aspect_mask,
             base_array_layer: image_view_info.base_array_layer,
             base_mip_level: image_view_info.base_mip_level,
             format: image_view_info.fmt,
-            mip_level_count: image_view_info
-                .mip_level_count
-                .unwrap_or(vk::REMAINING_MIP_LEVELS),
+            mip_level_count: image_view_info.mip_level_count,
             sample_count,
             target,
         }

@@ -17,14 +17,6 @@ fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    #[derive(Parser, Debug)]
-    #[command(version, about, long_about = None)]
-    struct Args {
-        /// Enable Vulkan graphics debugging layers.
-        #[arg(long)]
-        debug: bool,
-    }
-
     let args = Args::parse();
     let window = WindowBuilder::default().debug(args.debug).build()?;
 
@@ -77,7 +69,7 @@ fn main() -> Result<(), WindowError> {
                         .default_view_info()
                         .to_builder()
                         .base_mip_level(mip_level)
-                        .mip_level_count(Some(1)),
+                        .mip_level_count(1),
                 )
                 .load_color(0, frame.swapchain_image)
                 .store_color(0, frame.swapchain_image)
@@ -166,7 +158,7 @@ fn fill_mip_levels(device: &Arc<Device>, image: &Arc<Image>) -> Result<(), Drive
                     .default_view_info()
                     .to_builder()
                     .base_mip_level(mip_level)
-                    .mip_level_count(Some(1)),
+                    .mip_level_count(1),
             )
             .record_subpass(|subpass, _| {
                 subpass
@@ -261,4 +253,12 @@ fn splat(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
             ),
         ],
     )?))
+}
+
+#[derive(Parser)]
+#[command(version, about)]
+struct Args {
+    /// Enable Vulkan SDK validation layers.
+    #[arg(long)]
+    debug: bool,
 }
