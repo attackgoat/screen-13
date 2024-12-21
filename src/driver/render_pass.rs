@@ -85,8 +85,6 @@ pub(crate) struct FramebufferAttachmentImageInfo {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct FramebufferInfo {
     pub attachments: Vec<FramebufferAttachmentImageInfo>,
-    pub width: u32,
-    pub height: u32,
 }
 
 #[derive(Debug, Eq, Hash, PartialEq)]
@@ -292,8 +290,8 @@ impl RenderPass {
         let mut create_info = vk::FramebufferCreateInfo::default()
             .flags(vk::FramebufferCreateFlags::IMAGELESS)
             .render_pass(this.render_pass)
-            .width(key.width)
-            .height(key.height)
+            .width(attachments[0].width)
+            .height(attachments[0].height)
             .layers(layers)
             .push_next(&mut imageless_info);
         create_info.attachment_count = this.info.attachments.len() as _;
