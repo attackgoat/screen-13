@@ -392,7 +392,7 @@ impl RenderGraph {
         filter: vk::Filter,
         region: vk::ImageBlit,
     ) -> &mut Self {
-        self.blit_image_regions(src_node, dst_node, filter, vec![region])
+        self.blit_image_regions(src_node, dst_node, filter, [region])
     }
 
     /// Copy regions of an image, potentially performing format conversion.
@@ -529,7 +529,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyBufferNode>,
         region: vk::BufferCopy,
     ) -> &mut Self {
-        self.copy_buffer_regions(src_node, dst_node, vec![region])
+        self.copy_buffer_regions(src_node, dst_node, [region])
     }
 
     /// Copy data between buffer regions.
@@ -543,6 +543,26 @@ impl RenderGraph {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
         let (src_access_range, dst_access_range) = buffer_copy_subresources(regions.as_ref());
+
+        #[cfg(debug_assertions)]
+        {
+            let src_node: AnyBufferNode = src_node;
+            let src_size = self.node_info(src_node).size;
+
+            let dst_node: AnyBufferNode = dst_node;
+            let dst_size = self.node_info(dst_node).size;
+
+            debug_assert!(
+                src_size >= src_access_range.end,
+                "source range end ({}) exceeds source size ({src_size})",
+                src_access_range.end
+            );
+            debug_assert!(
+                dst_size >= dst_access_range.end,
+                "destination range end ({}) exceeds destination size ({dst_size})",
+                dst_access_range.end
+            );
+        };
 
         self.begin_pass("copy buffer")
             .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
@@ -597,7 +617,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyImageNode>,
         region: vk::BufferImageCopy,
     ) -> &mut Self {
-        self.copy_buffer_to_image_regions(src_node, dst_node, vec![region])
+        self.copy_buffer_to_image_regions(src_node, dst_node, [region])
     }
 
     /// Copy data from a buffer into an image.
@@ -682,7 +702,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyImageNode>,
         region: vk::ImageCopy,
     ) -> &mut Self {
-        self.copy_image_regions(src_node, dst_node, vec![region])
+        self.copy_image_regions(src_node, dst_node, [region])
     }
 
     /// Copy data between images.
@@ -755,7 +775,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyBufferNode>,
         region: vk::BufferImageCopy,
     ) -> &mut Self {
-        self.copy_image_to_buffer_regions(src_node, dst_node, vec![region])
+        self.copy_image_to_buffer_regions(src_node, dst_node, [region])
     }
 
     /// Copy image data into a buffer.
@@ -919,6 +939,13 @@ impl RenderGraph {
         let buffer_node = buffer_node.into();
         let buffer_info = self.node_info(buffer_node);
         let buffer_access_range = 0..buffer_info.size;
+
+        debug_assert!(
+            buffer_info.size >= buffer_access_range.end,
+            "buffer range end ({}) exceeds buffer size ({})",
+            buffer_access_range.end,
+            buffer_info.size
+        );
 
         self.begin_pass("update buffer")
             .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)

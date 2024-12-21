@@ -27,16 +27,12 @@ use {
     },
     std::{
         cell::RefCell,
-        collections::{HashMap, VecDeque},
+        collections::{BTreeMap, HashMap, VecDeque},
         iter::repeat,
         ops::Range,
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
-
-fn align_up(val: u32, atom: u32) -> u32 {
-    (val + atom - 1) & !(atom - 1)
-}
 
 #[derive(Default)]
 struct AccessCache {
@@ -817,18 +813,22 @@ impl Resolver {
 
         // Trivially round up the descriptor counts to increase cache coherence
         const ATOM: u32 = 1 << 5;
-        info.acceleration_structure_count = align_up(info.acceleration_structure_count, ATOM);
-        info.combined_image_sampler_count = align_up(info.combined_image_sampler_count, ATOM);
-        info.input_attachment_count = align_up(info.input_attachment_count, ATOM);
-        info.sampled_image_count = align_up(info.sampled_image_count, ATOM);
-        info.sampler_count = align_up(info.sampler_count, ATOM);
-        info.storage_buffer_count = align_up(info.storage_buffer_count, ATOM);
-        info.storage_buffer_dynamic_count = align_up(info.storage_buffer_dynamic_count, ATOM);
-        info.storage_image_count = align_up(info.storage_image_count, ATOM);
-        info.storage_texel_buffer_count = align_up(info.storage_texel_buffer_count, ATOM);
-        info.uniform_buffer_count = align_up(info.uniform_buffer_count, ATOM);
-        info.uniform_buffer_dynamic_count = align_up(info.uniform_buffer_dynamic_count, ATOM);
-        info.uniform_texel_buffer_count = align_up(info.uniform_texel_buffer_count, ATOM);
+        info.acceleration_structure_count =
+            info.acceleration_structure_count.next_multiple_of(ATOM);
+        info.combined_image_sampler_count =
+            info.combined_image_sampler_count.next_multiple_of(ATOM);
+        info.input_attachment_count = info.input_attachment_count.next_multiple_of(ATOM);
+        info.sampled_image_count = info.sampled_image_count.next_multiple_of(ATOM);
+        info.sampler_count = info.sampler_count.next_multiple_of(ATOM);
+        info.storage_buffer_count = info.storage_buffer_count.next_multiple_of(ATOM);
+        info.storage_buffer_dynamic_count =
+            info.storage_buffer_dynamic_count.next_multiple_of(ATOM);
+        info.storage_image_count = info.storage_image_count.next_multiple_of(ATOM);
+        info.storage_texel_buffer_count = info.storage_texel_buffer_count.next_multiple_of(ATOM);
+        info.uniform_buffer_count = info.uniform_buffer_count.next_multiple_of(ATOM);
+        info.uniform_buffer_dynamic_count =
+            info.uniform_buffer_dynamic_count.next_multiple_of(ATOM);
+        info.uniform_texel_buffer_count = info.uniform_texel_buffer_count.next_multiple_of(ATOM);
 
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
 
@@ -901,8 +901,7 @@ impl Resolver {
 
         let mut subpasses = Vec::<SubpassInfo>::with_capacity(pass.execs.len());
 
-        // Add attachments: format, sample count, layout, and load ops (using the first
-        // execution)
+        // Add load op attachments using the first execution
         {
             let first_exec = &pass.execs[0];
 
@@ -913,7 +912,6 @@ impl Resolver {
                 attachment.sample_count = cleared_attachment.sample_count;
                 attachment.load_op = vk::AttachmentLoadOp::CLEAR;
                 attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
             }
 
             // Loaded color attachments
@@ -923,25 +921,6 @@ impl Resolver {
                 attachment.sample_count = loaded_attachment.sample_count;
                 attachment.load_op = vk::AttachmentLoadOp::LOAD;
                 attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Resolved color attachments
-            for (dst_attachment_idx, (resolved_attachment, _)) in &first_exec.color_resolves {
-                let attachment = &mut attachments[*dst_attachment_idx as usize];
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Stored color attachments
-            for (attachment_idx, stored_attachment) in &first_exec.color_stores {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
             }
 
             // Cleared depth/stencil attachment
@@ -969,7 +948,6 @@ impl Resolver {
 
                     vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
                 };
-                attachment.final_layout = attachment.initial_layout;
             } else if let Some(loaded_attachment) = first_exec.depth_stencil_load {
                 // Loaded depth/stencil attachment
                 let attachment = &mut attachments[color_attachment_count];
@@ -995,65 +973,26 @@ impl Resolver {
 
                     vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
                 };
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Stored depth/stencil attachment
-            if let Some(stored_attachment) = first_exec.depth_stencil_store {
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.initial_layout = if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Resolved depth/stencil attachment
-            if let Some((resolved_attachment, ..)) = first_exec.depth_stencil_resolve {
-                let attachment = attachments.last_mut().unwrap();
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.initial_layout = if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-                attachment.final_layout = attachment.initial_layout;
             }
         }
 
-        // Add attachments: store ops and final layout (using the last pass)
+        // Add store op attachments using the last execution
         {
             let last_exec = pass.execs.last().unwrap();
 
             // Resolved color attachments
-            for attachment_idx in last_exec.color_resolves.keys() {
+            for (attachment_idx, (resolved_attachment, _)) in &last_exec.color_resolves {
                 let attachment = &mut attachments[*attachment_idx as usize];
+                attachment.fmt = resolved_attachment.format;
+                attachment.sample_count = resolved_attachment.sample_count;
                 attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
             }
 
             // Stored color attachments
-            for attachment_idx in last_exec.color_stores.keys() {
+            for (attachment_idx, stored_attachment) in &last_exec.color_stores {
                 let attachment = &mut attachments[*attachment_idx as usize];
+                attachment.fmt = stored_attachment.format;
+                attachment.sample_count = stored_attachment.sample_count;
                 attachment.store_op = vk::AttachmentStoreOp::STORE;
                 attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
             }
@@ -1061,6 +1000,8 @@ impl Resolver {
             // Stored depth/stencil attachment
             if let Some(stored_attachment) = last_exec.depth_stencil_store {
                 let attachment = &mut attachments[color_attachment_count];
+                attachment.fmt = stored_attachment.format;
+                attachment.sample_count = stored_attachment.sample_count;
                 attachment.final_layout = if stored_attachment
                     .aspect_mask
                     .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -1086,6 +1027,8 @@ impl Resolver {
             // Resolved depth/stencil attachment
             if let Some((resolved_attachment, ..)) = last_exec.depth_stencil_resolve {
                 let attachment = attachments.last_mut().unwrap();
+                attachment.fmt = resolved_attachment.format;
+                attachment.sample_count = resolved_attachment.sample_count;
                 attachment.final_layout = if resolved_attachment
                     .aspect_mask
                     .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -1099,6 +1042,16 @@ impl Resolver {
                 } else {
                     vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
                 };
+            }
+        }
+
+        for attachment in &mut attachments {
+            if attachment.load_op == vk::AttachmentLoadOp::DONT_CARE {
+                attachment.initial_layout = attachment.final_layout;
+            } else if attachment.store_op == vk::AttachmentStoreOp::DONT_CARE
+                && attachment.stencil_store_op == vk::AttachmentStoreOp::DONT_CARE
+            {
+                attachment.final_layout = attachment.initial_layout;
             }
         }
 
@@ -1255,7 +1208,7 @@ impl Resolver {
         // Add dependencies
         let dependencies =
             {
-                let mut dependencies = HashMap::with_capacity(attachment_count);
+                let mut dependencies = BTreeMap::new();
                 for (exec_idx, exec) in pass.execs.iter().enumerate() {
                     // Check accesses
                     'accesses: for (node_idx, accesses) in exec.accesses.iter() {
@@ -1806,10 +1759,12 @@ impl Resolver {
                 let mut end = start;
                 while end < schedule.len() {
                     let other = passes[schedule[end]].as_ref().unwrap();
+
                     debug!(
                         "attempting to merge [{idx}: {}] with [{end}: {}]",
                         pass.name, other.name
                     );
+
                     if Self::allow_merge_passes(&pass, other) {
                         end += 1;
                     } else {
@@ -2230,7 +2185,7 @@ impl Resolver {
         );
 
         // Optimize the schedule; leasing the required stuff it needs
-        self.reorder_scheduled_passes(schedule, end_pass_idx);
+        Self::reorder_scheduled_passes(schedule, end_pass_idx);
         self.merge_scheduled_passes(&mut schedule.passes);
         self.lease_scheduled_resources(pool, &schedule.passes)?;
 
@@ -2473,8 +2428,7 @@ impl Resolver {
     }
 
     #[profiling::function]
-    //fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule) {
-    fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule, end_pass_idx: usize) {
+    fn reorder_scheduled_passes(schedule: &mut Schedule, end_pass_idx: usize) {
         // It must be a party
         if schedule.passes.len() < 3 {
             return;

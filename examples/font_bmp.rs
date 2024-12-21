@@ -142,11 +142,7 @@ fn main() -> anyhow::Result<()> {
             .record_compute(move |compute, _| {
                 compute
                     .push_constants(&elapsed_time.as_secs_f32().to_ne_bytes())
-                    .dispatch(
-                        (frame.width + subgroup_size - 1) / subgroup_size,
-                        frame.height,
-                        1,
-                    );
+                    .dispatch(frame.width.div_ceil(subgroup_size), frame.height, 1);
             });
 
         // Print some text onto the image

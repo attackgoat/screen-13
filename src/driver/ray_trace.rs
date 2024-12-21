@@ -225,7 +225,7 @@ impl RayTracePipeline {
             let pipeline = ray_trace_ext
                 .create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
-                    vk::PipelineCache::null(),
+                    Device::pipeline_cache(device),
                     &[vk::RayTracingPipelineCreateInfoKHR::default()
                         .stages(&shader_stages)
                         .groups(&shader_groups)
@@ -445,10 +445,7 @@ pub struct RayTracePipelineInfo {
 
 impl RayTracePipelineInfo {
     /// Creates a default `RayTracePipelineInfoBuilder`.
-    #[allow(clippy::new_ret_no_self)]
-    #[deprecated = "Use RayTracePipelineInfo::default()"]
-    #[doc(hidden)]
-    pub fn new() -> RayTracePipelineInfoBuilder {
+    pub fn builder() -> RayTracePipelineInfoBuilder {
         Default::default()
     }
 

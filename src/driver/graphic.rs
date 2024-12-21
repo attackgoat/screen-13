@@ -12,7 +12,7 @@ use {
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
-    log::{trace, warn},
+    log::{log_enabled, trace, warn, Level::Trace},
     ordered_float::OrderedFloat,
     std::{collections::HashSet, ffi::CString, sync::Arc, thread::panicking},
 };
@@ -485,12 +485,14 @@ impl GraphicPipeline {
                 write.collect::<HashSet<_>>(),
             );
 
-            for input in input.iter() {
-                trace!("detected input attachment {input}");
-            }
+            if log_enabled!(Trace) {
+                for input in input.iter() {
+                    trace!("detected input attachment {input}");
+                }
 
-            for write in &write {
-                trace!("detected write attachment {write}");
+                for write in &write {
+                    trace!("detected write attachment {write}");
+                }
             }
 
             input
@@ -676,9 +678,7 @@ pub struct GraphicPipelineInfo {
 impl GraphicPipelineInfo {
     /// Creates a default `GraphicPipelineInfoBuilder`.
     #[allow(clippy::new_ret_no_self)]
-    #[deprecated = "Use GraphicPipelineInfo::default()"]
-    #[doc(hidden)]
-    pub fn new() -> GraphicPipelineInfoBuilder {
+    pub fn builder() -> GraphicPipelineInfoBuilder {
         Default::default()
     }
 
