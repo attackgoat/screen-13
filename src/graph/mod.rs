@@ -80,16 +80,12 @@ struct Attachment {
 impl Attachment {
     fn new(image_view_info: ImageViewInfo, sample_count: SampleCount, target: NodeIndex) -> Self {
         Self {
-            array_layer_count: image_view_info
-                .array_layer_count
-                .unwrap_or(vk::REMAINING_ARRAY_LAYERS),
+            array_layer_count: image_view_info.array_layer_count,
             aspect_mask: image_view_info.aspect_mask,
             base_array_layer: image_view_info.base_array_layer,
             base_mip_level: image_view_info.base_mip_level,
             format: image_view_info.fmt,
-            mip_level_count: image_view_info
-                .mip_level_count
-                .unwrap_or(vk::REMAINING_MIP_LEVELS),
+            mip_level_count: image_view_info.mip_level_count,
             sample_count,
             target,
         }
@@ -153,11 +149,12 @@ impl From<[u8; 4]> for ClearColorValue {
 
 #[derive(Default)]
 struct Execution {
-    accesses: HashMap<NodeIndex, [SubresourceAccess; 2]>,
+    accesses: HashMap<NodeIndex, Vec<SubresourceAccess>>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
     correlated_view_mask: u32,
     depth_stencil: Option<DepthStencilMode>,
+    render_area: Option<Area>,
     view_mask: u32,
 
     color_attachments: HashMap<AttachmentIndex, Attachment>,
@@ -268,7 +265,6 @@ impl Clone for ExecutionPipeline {
 struct Pass {
     execs: Vec<Execution>,
     name: String,
-    render_area: Option<Area>,
 }
 
 impl Pass {
@@ -850,12 +846,11 @@ impl RenderGraph {
             .rev()
             .flat_map(|pass| pass.execs.iter().rev())
             .find_map(|exec| {
-                exec.accesses.get(&node_idx).and_then(|[_early, late]| {
-                    if is_write_access(late.access) {
-                        Some(late.access)
-                    } else {
-                        None
-                    }
+                exec.accesses.get(&node_idx).and_then(|accesses| {
+                    accesses
+                        .iter()
+                        .map(|access| access.access)
+                        .find(|access| is_write_access(*access))
                 })
             })
     }
