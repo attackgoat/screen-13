@@ -136,11 +136,24 @@ impl Device {
         let mut ray_trace_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut features = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut features_v1_1)
-            .push_next(&mut features_v1_2)
-            .push_next(&mut acceleration_structure_features)
-            .push_next(&mut index_type_uint8_features)
-            .push_next(&mut ray_query_features)
-            .push_next(&mut ray_trace_features);
+            .push_next(&mut features_v1_2);
+
+        if physical_device.accel_struct_properties.is_some() {
+            features = features.push_next(&mut acceleration_structure_features);
+        }
+
+        if physical_device.ray_query_features.ray_query {
+            features = features.push_next(&mut ray_query_features);
+        }
+
+        if physical_device.ray_trace_features.ray_tracing_pipeline {
+            features = features.push_next(&mut ray_trace_features);
+        }
+
+        if physical_device.index_type_uint8_features.index_type_uint8 {
+            features = features.push_next(&mut index_type_uint8_features);
+        }
+
         unsafe { get_physical_device_features2(**physical_device, &mut features) };
 
         let device_create_info = vk::DeviceCreateInfo::default()
