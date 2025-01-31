@@ -100,7 +100,7 @@ cargo run --features profile-with-puffin --release --example vsm_omni
 
 Included are some examples you might find helpful:
 
-- [`hello_world.rs`](examples/hello_world.rs) — Displays a window on the screen. Please start here.
+- [`hello_world.rs`](contrib/screen-13-window/examples/hello_world.rs) — Displays a window on the screen. Please start here.
 - [`triangle.rs`](examples/triangle.rs) — Shaders and full setup of index/vertex buffers; < 100 LOC.
 - [`shader-toy/`](examples/shader-toy) — Recreation of a two-pass shader toy using the original
   shader code.
