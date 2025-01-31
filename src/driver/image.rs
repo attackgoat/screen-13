@@ -959,6 +959,21 @@ pub enum SampleCount {
     Type64,
 }
 
+impl SampleCount {
+    /// Returns `true` when the value represents a single sample mode.
+    pub fn is_single(self) -> bool {
+        matches!(self, Self::Type1)
+    }
+
+    /// Returns `true` when the value represents a multiple sample mode.
+    pub fn is_multiple(self) -> bool {
+        matches!(
+            self,
+            Self::Type2 | Self::Type4 | Self::Type8 | Self::Type16 | Self::Type32 | Self::Type64
+        )
+    }
+}
+
 impl From<SampleCount> for vk::SampleCountFlags {
     fn from(sample_count: SampleCount) -> Self {
         match sample_count {

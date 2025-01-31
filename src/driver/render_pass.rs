@@ -170,6 +170,7 @@ impl RenderPass {
                 subpass.depth_stencil_resolve_attachment.map(
                     |(_, depth_resolve_mode, stencil_resolve_mode)| {
                         vk::SubpassDescriptionDepthStencilResolve::default()
+                            .depth_stencil_resolve_attachment(subpass_attachments.last().unwrap())
                             .depth_resolve_mode(
                                 depth_resolve_mode.map(Into::into).unwrap_or_default(),
                             )
