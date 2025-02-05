@@ -7,7 +7,7 @@ use egui_winit::winit::raw_window_handle::HasDisplayHandle;
 
 use {
     bytemuck::cast_slice,
-    egui_winit::winit::{event::Event, event_loop::EventLoop, window::Window},
+    egui_winit::winit::{event::Event, window::Window},
     screen_13::prelude::*,
     std::{borrow::Cow, collections::HashMap, sync::Arc},
 };
