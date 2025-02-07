@@ -943,6 +943,42 @@ macro_rules! bind {
                 }
             }
 
+            impl<'a> Bind<PassRef<'a>, PipelinePassRef<'a, [<$name Pipeline>]>> for Arc<[<$name Pipeline>]> {
+                // TODO: Allow binding as explicit secondary command buffers? like with compute/raytrace stuff
+                fn bind(self, mut pass: PassRef<'a>) -> PipelinePassRef<'a, [<$name Pipeline>]> {
+                    let pass_ref = pass.as_mut();
+                    if pass_ref.execs.last().unwrap().pipeline.is_some() {
+                        // Binding from PipelinePass -> PipelinePass (changing shaders)
+                        pass_ref.execs.push(Default::default());
+                    }
+
+                    pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(self));
+
+                    PipelinePassRef {
+                        __: PhantomData,
+                        pass,
+                    }
+                }
+            }
+
+            impl<'a> Bind<PassRef<'a>, PipelinePassRef<'a, [<$name Pipeline>]>> for [<$name Pipeline>] {
+                // TODO: Allow binding as explicit secondary command buffers? like with compute/raytrace stuff
+                fn bind(self, mut pass: PassRef<'a>) -> PipelinePassRef<'a, [<$name Pipeline>]> {
+                    let pass_ref = pass.as_mut();
+                    if pass_ref.execs.last().unwrap().pipeline.is_some() {
+                        // Binding from PipelinePass -> PipelinePass (changing shaders)
+                        pass_ref.execs.push(Default::default());
+                    }
+
+                    pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(Arc::new(self)));
+
+                    PipelinePassRef {
+                        __: PhantomData,
+                        pass,
+                    }
+                }
+            }
+
             impl ExecutionPipeline {
                 #[allow(unused)]
                 pub(super) fn [<is_ $name:snake>](&self) -> bool {

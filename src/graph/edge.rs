@@ -79,6 +79,14 @@ macro_rules! pipeline_edge {
             impl<'a> Edge<PassRef<'a>> for &'a Arc<[<$name Pipeline>]> {
                 type Result = PipelinePassRef<'a, [<$name Pipeline>]>;
             }
+
+            impl<'a> Edge<PassRef<'a>> for Arc<[<$name Pipeline>]> {
+                type Result = PipelinePassRef<'a, [<$name Pipeline>]>;
+            }
+
+            impl<'a> Edge<PassRef<'a>> for [<$name Pipeline>] {
+                type Result = PipelinePassRef<'a, [<$name Pipeline>]>;
+            }
         }
     };
 }
