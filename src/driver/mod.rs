@@ -77,7 +77,6 @@ use {
         cmp::Ordering,
         error::Error,
         fmt::{Display, Formatter},
-        ops::Range,
     },
     vk_sync::ImageLayout,
 };
@@ -209,51 +208,6 @@ const fn access_type_into_u8(access: AccessType) -> u8 {
     }
 }
 
-#[allow(clippy::reversed_empty_ranges)]
-#[profiling::function]
-pub(super) fn buffer_copy_subresources(
-    regions: &[vk::BufferCopy],
-) -> (Range<vk::DeviceSize>, Range<vk::DeviceSize>) {
-    let mut src = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
-    let mut dst = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
-    for region in regions.iter() {
-        src.start = src.start.min(region.src_offset);
-        src.end = src.end.max(region.src_offset + region.size);
-
-        dst.start = dst.start.min(region.dst_offset);
-        dst.end = dst.end.max(region.dst_offset + region.size);
-    }
-
-    debug_assert!(src.end > src.start);
-    debug_assert!(dst.end > dst.start);
-
-    (src, dst)
-}
-
-#[allow(clippy::reversed_empty_ranges)]
-#[profiling::function]
-pub(super) fn buffer_image_copy_subresource(
-    regions: &[vk::BufferImageCopy],
-) -> Range<vk::DeviceSize> {
-    debug_assert!(!regions.is_empty());
-
-    let mut res = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
-    for region in regions.iter() {
-        debug_assert_ne!(0, region.buffer_row_length);
-        debug_assert_ne!(0, region.buffer_image_height);
-
-        res.start = res.start.min(region.buffer_offset);
-        res.end = res.end.max(
-            region.buffer_offset
-                + (region.buffer_row_length * region.buffer_image_height) as vk::DeviceSize,
-        );
-    }
-
-    debug_assert!(res.end > res.start);
-
-    res
-}
-
 pub(super) const fn format_aspect_mask(fmt: vk::Format) -> vk::ImageAspectFlags {
     match fmt {
         vk::Format::D16_UNORM => vk::ImageAspectFlags::DEPTH,
@@ -270,6 +224,23 @@ pub(super) const fn format_aspect_mask(fmt: vk::Format) -> vk::ImageAspectFlags 
             vk::ImageAspectFlags::DEPTH.as_raw() | vk::ImageAspectFlags::STENCIL.as_raw(),
         ),
         _ => vk::ImageAspectFlags::COLOR,
+    }
+}
+
+pub(super) const fn image_subresource_range_from_layers(
+    vk::ImageSubresourceLayers {
+        aspect_mask,
+        mip_level,
+        base_array_layer,
+        layer_count,
+    }: vk::ImageSubresourceLayers,
+) -> vk::ImageSubresourceRange {
+    vk::ImageSubresourceRange {
+        aspect_mask,
+        base_mip_level: mip_level,
+        level_count: 1,
+        base_array_layer,
+        layer_count,
     }
 }
 
