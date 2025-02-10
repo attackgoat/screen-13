@@ -141,6 +141,7 @@ const fn access_type_from_u8(access: u8) -> AccessType {
         55 => AccessType::AccelerationStructureBuildWrite,
         56 => AccessType::AccelerationStructureBuildRead,
         57 => AccessType::AccelerationStructureBufferWrite,
+        58 => AccessType::ColorAttachmentReadWrite,
         _ => unimplemented!(),
     }
 }
@@ -205,6 +206,7 @@ const fn access_type_into_u8(access: AccessType) -> u8 {
         AccessType::AccelerationStructureBuildWrite => 55,
         AccessType::AccelerationStructureBuildRead => 56,
         AccessType::AccelerationStructureBufferWrite => 57,
+        AccessType::ComputeShaderReadWrite => 58,
     }
 }
 
@@ -461,7 +463,8 @@ pub(super) const fn is_write_access(ty: AccessType) -> bool {
         | ColorAttachmentReadWrite
         | General
         | AccelerationStructureBuildWrite
-        | AccelerationStructureBufferWrite => true,
+        | AccelerationStructureBufferWrite
+        | ComputeShaderReadWrite => true,
     }
 }
 
@@ -697,6 +700,10 @@ pub(super) const fn pipeline_stage_access_flags(
             ),
         ),
         ty::ComputeShaderWrite => (stage::COMPUTE_SHADER, access::SHADER_WRITE),
+        ty::ComputeShaderReadWrite => (
+            stage::COMPUTE_SHADER,
+            access::from_raw(access::SHADER_WRITE.as_raw() | access::SHADER_READ.as_raw()),
+        ),
         ty::AnyShaderWrite => (stage::ALL_COMMANDS, access::SHADER_WRITE),
         ty::TransferWrite => (stage::TRANSFER, access::TRANSFER_WRITE),
         ty::HostWrite => (stage::HOST, access::HOST_WRITE),
