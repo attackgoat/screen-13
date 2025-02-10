@@ -297,7 +297,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 for array_layer in 0..6 {
                     let mut shadow_faces_view_info = shadow_faces_info.default_view_info();
-                    shadow_faces_view_info.array_layer_count = Some(1);
+                    shadow_faces_view_info.array_layer_count = 1;
                     shadow_faces_view_info.base_array_layer = array_layer;
 
                     let mut light = light;

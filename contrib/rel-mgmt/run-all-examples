@@ -4,7 +4,10 @@ set -e
 
 # Update everything
 cargo update
+cargo update --manifest-path contrib/screen-13-egui/Cargo.toml
+cargo update --manifest-path contrib/screen-13-fx/Cargo.toml
 cargo update --manifest-path contrib/screen-13-hot/Cargo.toml
+cargo update --manifest-path contrib/screen-13-imgui/Cargo.toml
 cargo update --manifest-path contrib/screen-13-window/Cargo.toml
 cargo update --manifest-path examples/skeletal-anim/Cargo.toml
 cargo update --manifest-path examples/shader-toy/Cargo.toml

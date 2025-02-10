@@ -582,13 +582,20 @@ impl From<UninitializedFieldError> for BufferInfoBuilderError {
 }
 
 /// Specifies a range of buffer data.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct BufferSubresource {
     /// The start of range.
     pub start: vk::DeviceSize,
 
     /// The non-inclusive end of the range.
     pub end: vk::DeviceSize,
+}
+
+impl BufferSubresource {
+    #[cfg(test)]
+    pub(crate) fn intersects(self, other: Self) -> bool {
+        self.start < other.end && self.end > other.start
+    }
 }
 
 impl From<BufferInfo> for BufferSubresource {
@@ -677,5 +684,25 @@ mod tests {
     #[should_panic(expected = "Field not initialized: size")]
     pub fn buffer_info_builder_uninit_size() {
         Builder::default().build();
+    }
+
+    #[test]
+    pub fn buffer_subresource_intersects() {
+        use BufferSubresource as B;
+
+        assert!(!B { start: 10, end: 20 }.intersects(B { start: 0, end: 5 }));
+        assert!(!B { start: 10, end: 20 }.intersects(B { start: 5, end: 10 }));
+        assert!(B { start: 10, end: 20 }.intersects(B { start: 10, end: 15 }));
+        assert!(B { start: 10, end: 20 }.intersects(B { start: 15, end: 20 }));
+        assert!(!B { start: 10, end: 20 }.intersects(B { start: 20, end: 25 }));
+        assert!(!B { start: 10, end: 20 }.intersects(B { start: 25, end: 30 }));
+
+        assert!(!B { start: 5, end: 10 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 5, end: 25 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 5, end: 15 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 10, end: 20 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 11, end: 19 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 15, end: 25 }.intersects(B { start: 10, end: 20 }));
+        assert!(!B { start: 20, end: 25 }.intersects(B { start: 10, end: 20 }));
     }
 }

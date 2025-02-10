@@ -33,7 +33,7 @@ use {
         buffer::Buffer,
         compute::ComputePipeline,
         device::Device,
-        format_aspect_mask,
+        format_aspect_mask, format_texel_block_size,
         graphic::{DepthStencilMode, GraphicPipeline},
         image::{ImageType, ImageViewInfo, SampleCount},
         image_subresource_range_from_layers, is_write_access,
@@ -466,8 +466,8 @@ impl RenderGraph {
                     },
                     &[vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
+                        layer_count: image_info.array_layer_count,
                         level_count: image_info.mip_level_count,
-                        layer_count: image_info.array_elements,
                         ..Default::default()
                     }],
                 );
@@ -502,8 +502,8 @@ impl RenderGraph {
                     &vk::ClearDepthStencilValue { depth, stencil },
                     &[vk::ImageSubresourceRange {
                         aspect_mask: format_aspect_mask(image_info.fmt),
+                        layer_count: image_info.array_layer_count,
                         level_count: image_info.mip_level_count,
-                        layer_count: image_info.array_elements,
                         ..Default::default()
                     }],
                 );
@@ -650,6 +650,7 @@ impl RenderGraph {
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
+        let dst_info = self.node_info(dst_node);
 
         let mut pass = self.begin_pass("copy buffer to image");
 
@@ -660,7 +661,9 @@ impl RenderGraph {
                     AccessType::TransferRead,
                     region.buffer_offset
                         ..region.buffer_offset
-                            + (region.buffer_row_length * region.buffer_image_height)
+                            + (region.buffer_row_length
+                                * format_texel_block_size(dst_info.fmt)
+                                * region.buffer_image_height)
                                 as vk::DeviceSize,
                 )
                 .access_node_subrange(
@@ -842,6 +845,7 @@ impl RenderGraph {
         regions: impl AsRef<[vk::BufferImageCopy]> + 'static + Send,
     ) -> &mut Self {
         let src_node = src_node.into();
+        let src_info = self.node_info(src_node);
         let dst_node = dst_node.into();
 
         let mut pass = self.begin_pass("copy image to buffer");
@@ -858,7 +862,9 @@ impl RenderGraph {
                     AccessType::TransferWrite,
                     region.buffer_offset
                         ..region.buffer_offset
-                            + (region.buffer_row_length * region.buffer_image_height)
+                            + (region.buffer_row_length
+                                * format_texel_block_size(src_info.fmt)
+                                * region.buffer_image_height)
                                 as vk::DeviceSize,
                 );
         }

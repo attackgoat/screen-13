@@ -1,9 +1,7 @@
 //! Image resource types
 
 use {
-    super::{
-        access_type_from_u8, access_type_into_u8, device::Device, format_aspect_mask, DriverError,
-    },
+    super::{device::Device, format_aspect_mask, DriverError},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
@@ -14,12 +12,9 @@ use {
     std::{
         collections::{hash_map::Entry, HashMap},
         fmt::{Debug, Formatter},
-        mem::take,
-        ops::Deref,
-        sync::{
-            atomic::{AtomicU8, Ordering},
-            Arc,
-        },
+        mem::{replace, take},
+        ops::{Deref, DerefMut},
+        sync::Arc,
         thread::panicking,
     },
     vk_sync::AccessType,
@@ -30,6 +25,43 @@ use parking_lot::Mutex;
 
 #[cfg(not(feature = "parking_lot"))]
 use std::sync::Mutex;
+
+#[cfg(debug_assertions)]
+fn assert_aspect_mask_supported(aspect_mask: vk::ImageAspectFlags) {
+    use vk::ImageAspectFlags as A;
+
+    const COLOR: A = A::COLOR;
+    const DEPTH: A = A::DEPTH;
+    const DEPTH_STENCIL: A = A::from_raw(A::DEPTH.as_raw() | A::STENCIL.as_raw());
+    const STENCIL: A = A::STENCIL;
+
+    assert!(matches!(
+        aspect_mask,
+        COLOR | DEPTH | DEPTH_STENCIL | STENCIL
+    ));
+}
+
+pub(crate) fn image_subresource_range_contains(
+    lhs: vk::ImageSubresourceRange,
+    rhs: vk::ImageSubresourceRange,
+) -> bool {
+    lhs.aspect_mask.contains(rhs.aspect_mask)
+        && lhs.base_array_layer <= rhs.base_array_layer
+        && lhs.base_array_layer + lhs.layer_count >= rhs.base_array_layer + rhs.layer_count
+        && lhs.base_mip_level <= rhs.base_mip_level
+        && lhs.base_mip_level + lhs.level_count >= rhs.base_mip_level + rhs.level_count
+}
+
+pub(crate) fn image_subresource_range_intersects(
+    lhs: vk::ImageSubresourceRange,
+    rhs: vk::ImageSubresourceRange,
+) -> bool {
+    lhs.aspect_mask.intersects(rhs.aspect_mask)
+        && lhs.base_array_layer < rhs.base_array_layer + rhs.layer_count
+        && lhs.base_array_layer + lhs.layer_count > rhs.base_array_layer
+        && lhs.base_mip_level < rhs.base_mip_level + rhs.level_count
+        && lhs.base_mip_level + lhs.level_count > rhs.base_mip_level
+}
 
 /// Smart pointer handle to an [image] object.
 ///
@@ -60,6 +92,7 @@ use std::sync::Mutex;
 /// [deref]: core::ops::Deref
 /// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 pub struct Image {
+    accesses: Mutex<ImageAccess>,
     allocation: Option<Allocation>, // None when we don't own the image (Swapchain images)
     pub(super) device: Arc<Device>,
     image: vk::Image,
@@ -71,8 +104,6 @@ pub struct Image {
 
     /// A name for debugging purposes.
     pub name: Option<String>,
-
-    prev_access: AtomicU8,
 }
 
 impl Image {
@@ -110,6 +141,8 @@ impl Image {
             "Unspecified image usage {:?}",
             info.usage
         );
+
+        let accesses = Mutex::new(ImageAccess::new(info));
 
         let device = Arc::clone(device);
         let create_info = info
@@ -158,17 +191,17 @@ impl Image {
         }
 
         Ok(Self {
+            accesses,
             allocation: Some(allocation),
             device,
             image,
             image_view_cache: Mutex::new(Default::default()),
             info,
             name: None,
-            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         })
     }
 
-    /// Keeps track of some `next_access` which affects this object.
+    /// Keeps track of some next `access` which affects a `range` this image.
     ///
     /// Returns the previous access for which a pipeline barrier should be used to prevent data
     /// corruption.
@@ -211,11 +244,27 @@ impl Image {
     /// [_Ash_]: https://crates.io/crates/ash
     /// [_Erupt_]: https://crates.io/crates/erupt
     #[profiling::function]
-    pub fn access(this: &Self, next_access: AccessType) -> AccessType {
-        access_type_from_u8(
-            this.prev_access
-                .swap(access_type_into_u8(next_access), Ordering::Relaxed),
-        )
+    pub fn access(
+        this: &Self,
+        access: AccessType,
+        range: vk::ImageSubresourceRange,
+    ) -> impl Iterator<Item = (AccessType, vk::ImageSubresourceRange)> + '_ {
+        #[cfg(debug_assertions)]
+        {
+            assert_aspect_mask_supported(range.aspect_mask);
+
+            assert!(format_aspect_mask(this.info.fmt).contains(range.aspect_mask));
+        }
+
+        debug_assert!(range.base_array_layer + range.layer_count <= this.info.array_layer_count);
+        debug_assert!(range.base_mip_level + range.level_count <= this.info.mip_level_count);
+
+        let accesses = this.accesses.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let accesses = accesses.unwrap();
+
+        ImageAccessIter::new(accesses, access, range)
     }
 
     #[profiling::function]
@@ -229,15 +278,16 @@ impl Image {
 
         let image_view_cache = take(&mut *image_view_cache);
         let Self { image, info, .. } = *this;
+        let accesses = Mutex::new(ImageAccess::new(info));
 
         Self {
+            accesses,
             allocation: None,
             device: Arc::clone(&this.device),
             image,
             image_view_cache: Mutex::new(image_view_cache),
             info,
             name: this.name.clone(),
-            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         }
     }
 
@@ -281,15 +331,16 @@ impl Image {
     pub fn from_raw(device: &Arc<Device>, image: vk::Image, info: impl Into<ImageInfo>) -> Self {
         let device = Arc::clone(device);
         let info = info.into();
+        let accesses = Mutex::new(ImageAccess::new(info));
 
         Self {
+            accesses,
             allocation: None,
             device,
             image,
             image_view_cache: Mutex::new(Default::default()),
             info,
             name: None,
-            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         }
     }
 
@@ -345,6 +396,246 @@ impl Drop for Image {
     }
 }
 
+#[derive(Debug)]
+struct ImageAccess {
+    accesses: Box<[AccessType]>,
+
+    #[cfg(debug_assertions)]
+    array_layer_count: u32,
+
+    aspect_count: u8,
+    mip_level_count: u32,
+}
+
+impl ImageAccess {
+    fn new(info: ImageInfo) -> Self {
+        let aspect_mask = format_aspect_mask(info.fmt);
+
+        #[cfg(debug_assertions)]
+        assert_aspect_mask_supported(aspect_mask);
+
+        let aspect_count = aspect_mask.as_raw().count_ones() as u8;
+        let array_layer_count = info.array_layer_count;
+        let mip_level_count = info.mip_level_count;
+
+        Self {
+            accesses: vec![
+                AccessType::Nothing;
+                (aspect_count as u32 * array_layer_count * mip_level_count) as _
+            ]
+            .into_boxed_slice(),
+
+            #[cfg(debug_assertions)]
+            array_layer_count,
+
+            aspect_count,
+            mip_level_count,
+        }
+    }
+
+    fn idx(&self, aspect: u8, array_layer: u32, mip_level: u32) -> usize {
+        // For a 3 Layer, 2 Mip, Depth/Stencil image:
+        // 0     1     2     3     4     5     6     7     8     9     10    11
+        // DL0M0 SL0M0 DL0M1 SL0M1 DL1M0 SL1M0 DL1M1 SL1M1 DL2M0 SL2M0 DL2M1 SL2M1
+        let idx = (array_layer * self.aspect_count as u32 * self.mip_level_count
+            + mip_level * self.aspect_count as u32
+            + aspect as u32) as _;
+
+        debug_assert!(idx < self.accesses.len());
+
+        idx
+    }
+}
+
+struct ImageAccessIter<T>
+where
+    T: DerefMut<Target = ImageAccess>,
+{
+    access: AccessType,
+    array_layer: u32,
+    aspect: u8,
+    image: T,
+    mip_level: u32,
+    range: ImageAccessRange,
+}
+
+impl<T> ImageAccessIter<T>
+where
+    T: DerefMut<Target = ImageAccess>,
+{
+    fn new(image: T, access: AccessType, range: vk::ImageSubresourceRange) -> Self {
+        #[cfg(debug_assertions)]
+        assert_aspect_mask_supported(range.aspect_mask);
+
+        #[cfg(debug_assertions)]
+        assert!(range.base_array_layer < image.array_layer_count);
+
+        debug_assert!(range.base_mip_level < image.mip_level_count);
+        debug_assert_ne!(range.layer_count, 0);
+        debug_assert_ne!(range.level_count, 0);
+
+        let aspect_count = range.aspect_mask.as_raw().count_ones() as _;
+
+        debug_assert!(aspect_count <= image.aspect_count);
+
+        let base_aspect = range.aspect_mask.as_raw().trailing_zeros() as _;
+
+        Self {
+            access,
+            array_layer: 0,
+            aspect: 0,
+            image,
+            mip_level: 0,
+            range: ImageAccessRange {
+                aspect_count,
+                base_array_layer: range.base_array_layer,
+                base_aspect,
+                base_mip_level: range.base_mip_level,
+                layer_count: range.layer_count,
+                level_count: range.level_count,
+            },
+        }
+    }
+}
+
+impl<T> Iterator for ImageAccessIter<T>
+where
+    T: DerefMut<Target = ImageAccess>,
+{
+    type Item = (AccessType, vk::ImageSubresourceRange);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.aspect == self.range.aspect_count {
+            return None;
+        }
+
+        let mut res = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::from_raw(
+                (1 << (self.range.base_aspect + self.aspect)) as _,
+            ),
+            base_array_layer: self.range.base_array_layer + self.array_layer,
+            base_mip_level: self.range.base_mip_level + self.mip_level,
+            layer_count: 1,
+            level_count: 1,
+        };
+
+        let base_aspect = (self.image.aspect_count << self.range.base_aspect == 8) as u8;
+        let prev_access = replace(
+            {
+                let idx = self.image.idx(
+                    base_aspect + self.aspect,
+                    res.base_array_layer,
+                    res.base_mip_level,
+                );
+
+                unsafe { self.image.accesses.get_unchecked_mut(idx) }
+            },
+            self.access,
+        );
+
+        loop {
+            self.mip_level += 1;
+            self.mip_level %= self.range.level_count;
+            if self.mip_level == 0 {
+                break;
+            }
+
+            let idx = self.image.idx(
+                base_aspect + self.aspect,
+                self.range.base_array_layer + self.array_layer,
+                self.range.base_mip_level + self.mip_level,
+            );
+            let access = unsafe { self.image.accesses.get_unchecked_mut(idx) };
+            if *access != prev_access {
+                return Some((prev_access, res));
+            }
+
+            *access = self.access;
+            res.level_count += 1;
+        }
+
+        loop {
+            self.array_layer += 1;
+            self.array_layer %= self.range.layer_count;
+            if self.array_layer == 0 {
+                break;
+            }
+
+            if res.base_mip_level != self.range.base_mip_level {
+                return Some((prev_access, res));
+            }
+
+            let array_layer = self.range.base_array_layer + self.array_layer;
+            let end_mip_level = self.range.base_mip_level + self.range.level_count;
+
+            for mip_level in self.range.base_mip_level..end_mip_level {
+                let idx = self
+                    .image
+                    .idx(base_aspect + self.aspect, array_layer, mip_level);
+                let access = unsafe { *self.image.accesses.get_unchecked(idx) };
+                if access != prev_access {
+                    return Some((prev_access, res));
+                }
+            }
+
+            for mip_level in self.range.base_mip_level..end_mip_level {
+                let idx = self
+                    .image
+                    .idx(base_aspect + self.aspect, array_layer, mip_level);
+                let access = unsafe { self.image.accesses.get_unchecked_mut(idx) };
+                *access = self.access;
+            }
+
+            res.layer_count += 1;
+        }
+
+        loop {
+            self.aspect += 1;
+            if self.aspect == self.range.aspect_count {
+                return Some((prev_access, res));
+            }
+
+            let end_array_layer = self.range.base_array_layer + self.range.layer_count;
+            let end_mip_level = self.range.base_mip_level + self.range.level_count;
+
+            for array_layer in self.range.base_array_layer..end_array_layer {
+                for mip_level in self.range.base_mip_level..end_mip_level {
+                    let idx = self
+                        .image
+                        .idx(base_aspect + self.aspect, array_layer, mip_level);
+                    let access = unsafe { *self.image.accesses.get_unchecked(idx) };
+                    if access != prev_access {
+                        return Some((prev_access, res));
+                    }
+                }
+            }
+
+            for array_layer in self.range.base_array_layer..end_array_layer {
+                for mip_level in self.range.base_mip_level..end_mip_level {
+                    let idx = self
+                        .image
+                        .idx(base_aspect + self.aspect, array_layer, mip_level);
+                    let access = unsafe { self.image.accesses.get_unchecked_mut(idx) };
+                    *access = self.access;
+                }
+            }
+
+            res.aspect_mask |=
+                vk::ImageAspectFlags::from_raw((1 << (self.range.base_aspect + self.aspect)) as _)
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct ImageAccessRange {
+    aspect_count: u8,
+    base_array_layer: u32,
+    base_aspect: u8,
+    base_mip_level: u32,
+    layer_count: u32,
+    level_count: u32,
+}
+
 /// Information used to create an [`Image`] instance.
 #[derive(Builder, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[builder(
@@ -356,7 +647,7 @@ impl Drop for Image {
 pub struct ImageInfo {
     /// The number of layers in the image.
     #[builder(default = "1", setter(strip_option))]
-    pub array_elements: u32,
+    pub array_layer_count: u32,
 
     /// Image extent of the Z axis, when describing a three dimensional image.
     #[builder(setter(strip_option))]
@@ -467,7 +758,7 @@ impl ImageInfo {
         width: u32,
         height: u32,
         depth: u32,
-        array_elements: u32,
+        array_layer_count: u32,
         fmt: vk::Format,
         usage: vk::ImageUsageFlags,
     ) -> Self {
@@ -476,7 +767,7 @@ impl ImageInfo {
             width,
             height,
             depth,
-            array_elements,
+            array_layer_count,
             fmt,
             usage,
             flags: vk::ImageCreateFlags::empty(),
@@ -544,7 +835,7 @@ impl ImageInfo {
     }
 
     fn image_create_info<'a>(self) -> vk::ImageCreateInfo<'a> {
-        let (ty, extent, array_layers) = match self.ty {
+        let (ty, extent, array_layer_count) = match self.ty {
             ImageType::Texture1D => (
                 vk::ImageType::TYPE_1D,
                 vk::Extent3D {
@@ -561,7 +852,7 @@ impl ImageInfo {
                     height: 1,
                     depth: 1,
                 },
-                self.array_elements,
+                self.array_layer_count,
             ),
             ImageType::Texture2D => (
                 vk::ImageType::TYPE_2D,
@@ -571,7 +862,7 @@ impl ImageInfo {
                     depth: 1,
                 },
                 if self.flags.contains(vk::ImageCreateFlags::CUBE_COMPATIBLE) {
-                    self.array_elements
+                    self.array_layer_count
                 } else {
                     1
                 },
@@ -583,7 +874,7 @@ impl ImageInfo {
                     height: self.height,
                     depth: 1,
                 },
-                self.array_elements,
+                self.array_layer_count,
             ),
             ImageType::Texture3D => (
                 vk::ImageType::TYPE_3D,
@@ -610,7 +901,7 @@ impl ImageInfo {
                     height: self.height,
                     depth: 1,
                 },
-                6 * self.array_elements,
+                6 * self.array_layer_count,
             ),
         };
 
@@ -620,7 +911,7 @@ impl ImageInfo {
             .format(self.fmt)
             .extent(extent)
             .mip_levels(self.mip_level_count)
-            .array_layers(array_layers)
+            .array_layers(array_layer_count)
             .samples(self.sample_count.into())
             .tiling(self.tiling)
             .usage(self.usage)
@@ -632,7 +923,7 @@ impl ImageInfo {
     #[inline(always)]
     pub fn to_builder(self) -> ImageInfoBuilder {
         ImageInfoBuilder {
-            array_elements: Some(self.array_elements),
+            array_layer_count: Some(self.array_layer_count),
             depth: Some(self.depth),
             flags: Some(self.flags),
             fmt: Some(self.fmt),
@@ -810,7 +1101,7 @@ pub struct ImageViewInfo {
     /// The number of layers that will be contained in the view.
     ///
     /// The default value is `vk::REMAINING_ARRAY_LAYERS`.
-    #[builder(default = vk::REMAINING_ARRAY_LAYERS)]
+    #[builder(default = "vk::REMAINING_ARRAY_LAYERS")]
     pub array_layer_count: u32,
 
     /// The portion of the image that will be contained in the view.
@@ -830,7 +1121,7 @@ pub struct ImageViewInfo {
     /// The number of mip levels that will be contained in the view.
     ///
     /// The default value is `vk::REMAINING_MIP_LEVELS`.
-    #[builder(default = vk::REMAINING_MIP_LEVELS)]
+    #[builder(default = "vk::REMAINING_MIP_LEVELS")]
     pub mip_level_count: u32,
 
     /// The basic dimensionality of the view.
@@ -880,7 +1171,7 @@ impl ImageViewInfo {
 impl From<ImageInfo> for ImageViewInfo {
     fn from(info: ImageInfo) -> Self {
         Self {
-            array_layer_count: info.array_elements,
+            array_layer_count: info.array_layer_count,
             aspect_mask: format_aspect_mask(info.fmt),
             base_array_layer: 0,
             base_mip_level: 0,
@@ -996,7 +1287,808 @@ impl Default for SampleCount {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, std::ops::Range};
+
+    // ImageSubresourceRange does not implement PartialEq
+    fn assert_access_ranges_eq(
+        lhs: (AccessType, vk::ImageSubresourceRange),
+        rhs: (AccessType, vk::ImageSubresourceRange),
+    ) {
+        assert_eq!(
+            (
+                lhs.0,
+                lhs.1.aspect_mask,
+                lhs.1.base_array_layer,
+                lhs.1.layer_count,
+                lhs.1.base_mip_level,
+                lhs.1.level_count
+            ),
+            (
+                rhs.0,
+                rhs.1.aspect_mask,
+                rhs.1.base_array_layer,
+                rhs.1.layer_count,
+                rhs.1.base_mip_level,
+                rhs.1.level_count
+            )
+        );
+    }
+
+    #[test]
+    pub fn image_access_basic() {
+        use vk::ImageAspectFlags as A;
+
+        let mut image = ImageAccess::new(image_subresource(vk::Format::R8G8B8A8_UNORM, 1, 1));
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderWrite,
+                image_subresource_range(A::COLOR, 0..1, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::COLOR, 0..1, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::COLOR, 0..1, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::COLOR, 0..1, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+    }
+
+    #[test]
+    pub fn image_access_color() {
+        use vk::ImageAspectFlags as A;
+
+        let mut image = ImageAccess::new(image_subresource(vk::Format::R8G8B8A8_UNORM, 3, 3));
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderWrite,
+                image_subresource_range(A::COLOR, 0..3, 0..3),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::COLOR, 0..3, 0..3),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::COLOR, 0..1, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::COLOR, 0..1, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::ComputeShaderWrite,
+                image_subresource_range(A::COLOR, 0..3, 0..3),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderReadOther,
+                    image_subresource_range(A::COLOR, 0..1, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::COLOR, 0..1, 1..3),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::COLOR, 1..3, 0..3),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::HostRead,
+                image_subresource_range(A::COLOR, 0..3, 0..3),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::ComputeShaderWrite,
+                    image_subresource_range(A::COLOR, 0..3, 0..3),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::HostWrite,
+                image_subresource_range(A::COLOR, 1..2, 1..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 1..2, 1..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::GeometryShaderReadOther,
+                image_subresource_range(A::COLOR, 0..3, 0..3),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 0..1, 0..3),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 1..2, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostWrite,
+                    image_subresource_range(A::COLOR, 1..2, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 1..2, 2..3),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 2..3, 0..3),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::VertexBuffer,
+                image_subresource_range(A::COLOR, 0..3, 1..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::GeometryShaderReadOther,
+                    image_subresource_range(A::COLOR, 0..3, 1..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::ColorAttachmentRead,
+                image_subresource_range(A::COLOR, 0..3, 0..3),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::GeometryShaderReadOther,
+                    image_subresource_range(A::COLOR, 0..1, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::VertexBuffer,
+                    image_subresource_range(A::COLOR, 0..1, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::GeometryShaderReadOther,
+                    image_subresource_range(A::COLOR, 0..1, 2..3),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::GeometryShaderReadOther,
+                    image_subresource_range(A::COLOR, 1..2, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::VertexBuffer,
+                    image_subresource_range(A::COLOR, 1..2, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::GeometryShaderReadOther,
+                    image_subresource_range(A::COLOR, 1..2, 2..3),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::GeometryShaderReadOther,
+                    image_subresource_range(A::COLOR, 2..3, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::VertexBuffer,
+                    image_subresource_range(A::COLOR, 2..3, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::GeometryShaderReadOther,
+                    image_subresource_range(A::COLOR, 2..3, 2..3),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+    }
+
+    #[test]
+    pub fn image_access_layers() {
+        use vk::ImageAspectFlags as A;
+
+        let mut image = ImageAccess::new(image_subresource(vk::Format::R8G8B8A8_UNORM, 3, 1));
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderWrite,
+                image_subresource_range(A::COLOR, 0..3, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::COLOR, 0..3, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::COLOR, 2..3, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::COLOR, 2..3, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::HostRead,
+                image_subresource_range(A::COLOR, 0..2, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::COLOR, 0..2, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::COLOR, 0..1, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 0..1, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::COLOR, 1..2, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 1..2, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::HostWrite,
+                image_subresource_range(A::COLOR, 0..3, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderReadOther,
+                    image_subresource_range(A::COLOR, 0..3, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+    }
+
+    #[test]
+    pub fn image_access_levels() {
+        use vk::ImageAspectFlags as A;
+
+        let mut image = ImageAccess::new(image_subresource(vk::Format::R8G8B8A8_UNORM, 1, 3));
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderWrite,
+                image_subresource_range(A::COLOR, 0..1, 0..3),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::COLOR, 0..1, 0..3),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::COLOR, 0..1, 2..3),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::COLOR, 0..1, 2..3),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::HostRead,
+                image_subresource_range(A::COLOR, 0..1, 0..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::COLOR, 0..1, 0..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::COLOR, 0..1, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 0..1, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::COLOR, 0..1, 1..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::HostRead,
+                    image_subresource_range(A::COLOR, 0..1, 1..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::HostWrite,
+                image_subresource_range(A::COLOR, 0..1, 0..3),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderReadOther,
+                    image_subresource_range(A::COLOR, 0..1, 0..3),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+    }
+
+    #[test]
+    pub fn image_access_depth_stencil() {
+        use vk::ImageAspectFlags as A;
+
+        let mut image = ImageAccess::new(image_subresource(vk::Format::D24_UNORM_S8_UINT, 4, 3));
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderWrite,
+                image_subresource_range(A::DEPTH, 0..4, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::DEPTH, 0..4, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderWrite,
+                image_subresource_range(A::STENCIL, 0..4, 1..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::STENCIL, 0..4, 1..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::DEPTH | A::STENCIL, 0..4, 0..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::DEPTH, 0..1, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::DEPTH, 0..1, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::DEPTH, 1..2, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::DEPTH, 1..2, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::DEPTH, 2..3, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::DEPTH, 2..3, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::DEPTH, 3..4, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::DEPTH, 3..4, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::STENCIL, 0..1, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::STENCIL, 0..1, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::STENCIL, 1..2, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::STENCIL, 1..2, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::STENCIL, 2..3, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::STENCIL, 2..3, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::STENCIL, 3..4, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::STENCIL, 3..4, 1..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AccelerationStructureBuildWrite,
+                image_subresource_range(A::DEPTH | A::STENCIL, 0..4, 0..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderReadOther,
+                    image_subresource_range(A::DEPTH | A::STENCIL, 0..4, 0..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AccelerationStructureBuildRead,
+                image_subresource_range(A::DEPTH, 1..3, 0..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AccelerationStructureBuildWrite,
+                    image_subresource_range(A::DEPTH, 1..3, 0..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+    }
+
+    #[test]
+    pub fn image_access_stencil() {
+        use vk::ImageAspectFlags as A;
+
+        let mut image = ImageAccess::new(image_subresource(vk::Format::S8_UINT, 2, 2));
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderWrite,
+                image_subresource_range(A::STENCIL, 0..2, 0..1),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::STENCIL, 0..2, 0..1),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::AnyShaderReadOther,
+                image_subresource_range(A::STENCIL, 0..2, 1..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::Nothing,
+                    image_subresource_range(A::STENCIL, 0..2, 1..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = ImageAccessIter::new(
+                &mut image,
+                AccessType::HostRead,
+                image_subresource_range(A::STENCIL, 0..2, 0..2),
+            );
+
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::STENCIL, 0..1, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderReadOther,
+                    image_subresource_range(A::STENCIL, 0..1, 1..2),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderWrite,
+                    image_subresource_range(A::STENCIL, 1..2, 0..1),
+                ),
+            );
+            assert_access_ranges_eq(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderReadOther,
+                    image_subresource_range(A::STENCIL, 1..2, 1..2),
+                ),
+            );
+            assert!(accesses.next().is_none());
+        }
+    }
 
     #[test]
     pub fn image_info_cube() {
@@ -1095,7 +2187,7 @@ mod tests {
             .width(42)
             .height(84)
             .depth(1)
-            .array_elements(100)
+            .array_layer_count(100)
             .build();
 
         assert_eq!(info, builder);
@@ -1175,6 +2267,83 @@ mod tests {
             .height(2)
             .ty(ImageType::Texture2D)
             .build();
+    }
+
+    fn image_subresource(
+        fmt: vk::Format,
+        array_layer_count: u32,
+        mip_level_count: u32,
+    ) -> ImageInfo {
+        ImageInfo::image_2d(1, 1, fmt, vk::ImageUsageFlags::empty())
+            .to_builder()
+            .array_layer_count(array_layer_count)
+            .mip_level_count(mip_level_count)
+            .build()
+    }
+
+    fn image_subresource_range(
+        aspect_mask: vk::ImageAspectFlags,
+        array_layers: Range<u32>,
+        mip_levels: Range<u32>,
+    ) -> vk::ImageSubresourceRange {
+        vk::ImageSubresourceRange {
+            aspect_mask,
+            base_array_layer: array_layers.start,
+            base_mip_level: mip_levels.start,
+            layer_count: array_layers.len() as _,
+            level_count: mip_levels.len() as _,
+        }
+    }
+
+    #[test]
+    pub fn image_subresource_range_contains() {
+        use {
+            super::image_subresource_range_contains as f, image_subresource_range as i,
+            vk::ImageAspectFlags as A,
+        };
+
+        assert!(f(i(A::COLOR, 0..1, 0..1), i(A::COLOR, 0..1, 0..1)));
+        assert!(f(i(A::COLOR, 0..2, 0..1), i(A::COLOR, 0..1, 0..1)));
+        assert!(f(i(A::COLOR, 0..1, 0..2), i(A::COLOR, 0..1, 0..1)));
+        assert!(f(i(A::COLOR, 0..2, 0..2), i(A::COLOR, 0..1, 0..1)));
+        assert!(!f(i(A::COLOR, 0..1, 1..3), i(A::COLOR, 0..1, 0..1)));
+        assert!(!f(i(A::COLOR, 1..3, 0..1), i(A::COLOR, 0..1, 0..1)));
+        assert!(!f(i(A::COLOR, 0..1, 1..3), i(A::COLOR, 0..1, 0..2)));
+        assert!(!f(i(A::COLOR, 1..3, 0..1), i(A::COLOR, 0..2, 0..1)));
+    }
+
+    #[test]
+    pub fn image_subresource_range_intersects() {
+        use {
+            super::image_subresource_range_intersects as f, image_subresource_range as i,
+            vk::ImageAspectFlags as A,
+        };
+
+        assert!(f(i(A::COLOR, 0..1, 0..1), i(A::COLOR, 0..1, 0..1)));
+        assert!(!f(i(A::COLOR, 0..1, 0..1), i(A::DEPTH, 0..1, 0..1)));
+
+        assert!(!f(i(A::COLOR, 0..1, 0..1), i(A::COLOR, 1..2, 0..1)));
+        assert!(!f(i(A::COLOR, 0..1, 0..1), i(A::COLOR, 0..1, 1..2)));
+        assert!(!f(i(A::COLOR, 0..1, 0..1), i(A::DEPTH, 1..2, 0..1)));
+        assert!(!f(i(A::COLOR, 0..1, 0..1), i(A::DEPTH, 0..1, 1..2)));
+        assert!(!f(i(A::COLOR, 1..2, 1..2), i(A::COLOR, 0..1, 0..1)));
+
+        assert!(f(
+            i(A::DEPTH | A::STENCIL, 2..3, 3..5),
+            i(A::DEPTH, 2..3, 2..4)
+        ));
+        assert!(f(
+            i(A::DEPTH | A::STENCIL, 2..3, 3..5),
+            i(A::DEPTH, 2..3, 4..6)
+        ));
+        assert!(!f(
+            i(A::DEPTH | A::STENCIL, 2..3, 3..5),
+            i(A::DEPTH, 2..3, 2..3)
+        ));
+        assert!(!f(
+            i(A::DEPTH | A::STENCIL, 2..3, 3..5),
+            i(A::DEPTH, 2..3, 5..6)
+        ));
     }
 
     #[test]

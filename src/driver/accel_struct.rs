@@ -803,7 +803,10 @@ mod tests {
 
     #[test]
     pub fn accel_struct_info_builder() {
-        let info = Info::tlas(32);
+        let info = Info {
+            size: 32,
+            ty: vk::AccelerationStructureTypeKHR::GENERIC,
+        };
         let builder = Builder::default().size(32).build();
 
         assert_eq!(info, builder);

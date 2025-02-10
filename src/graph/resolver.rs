@@ -1869,9 +1869,6 @@ impl Resolver {
     ) {
         use std::slice::from_ref;
 
-        // TODO: Notice the very common case where we have previously barriered on something which
-        // has not had any access since the previous barrier
-
         // We store a Barriers in TLS to save an alloc; contents are POD
         thread_local! {
             static BARRIERS: RefCell<Barriers> = Default::default();
@@ -1913,10 +1910,11 @@ impl Resolver {
             // render pass leasing function)
 
             for (node_idx, accesses) in accesses {
-                let binding = &mut bindings[*node_idx];
+                let binding = &bindings[*node_idx];
 
-                match accesses.first().unwrap().subresource {
-                    Subresource::AccelerationStructure => {
+                match binding {
+                    Binding::AccelerationStructure(..)
+                    | Binding::AccelerationStructureLease(..) => {
                         let accel_struct = binding.as_driver_acceleration_structure().unwrap();
 
                         let prev_access = AccelerationStructure::access(
@@ -1931,7 +1929,7 @@ impl Resolver {
                         );
                         barriers.prev_accesses.push(prev_access);
                     }
-                    Subresource::Buffer(_) => {
+                    Binding::Buffer(..) | Binding::BufferLease(..) => {
                         let buffer = binding.as_driver_buffer().unwrap();
                         let prev_access = Buffer::access(buffer, accesses.last().unwrap().access);
 
@@ -1944,15 +1942,6 @@ impl Resolver {
                                 unreachable!()
                             };
 
-                            trace!(
-                                "{trace_pad}buffer {:?} {}..{} {:?} -> {:?}",
-                                buffer,
-                                range.start,
-                                range.end,
-                                access,
-                                prev_access,
-                            );
-
                             barriers.buffers.push(Barrier {
                                 next_access: access,
                                 prev_access,
@@ -1964,40 +1953,28 @@ impl Resolver {
                             });
                         }
                     }
-                    Subresource::Image(_) => {
+                    Binding::Image(..) | Binding::ImageLease(..) | Binding::SwapchainImage(..) => {
                         let image = binding.as_driver_image().unwrap();
-                        let prev_access = Image::access(image, accesses.last().unwrap().access);
 
                         for &SubresourceAccess {
                             access,
                             subresource,
                         } in accesses
                         {
-                            // if !record_framebuffer_access && is_framebuffer_access(access) {
-                            //     continue;
-                            // }
-
                             let Subresource::Image(range) = subresource else {
                                 unreachable!()
                             };
 
-                            trace!(
-                                "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
-                                image,
-                                prev_access,
-                                image_access_layout(prev_access),
-                                access,
-                                image_access_layout(access),
-                            );
-
-                            barriers.images.push(Barrier {
-                                next_access: access,
-                                prev_access,
-                                resource: ImageResource {
-                                    image: **image,
-                                    range,
-                                },
-                            })
+                            for (prev_access, range) in Image::access(image, access, range) {
+                                barriers.images.push(Barrier {
+                                    next_access: access,
+                                    prev_access,
+                                    resource: ImageResource {
+                                        image: **image,
+                                        range,
+                                    },
+                                })
+                            }
                         }
                     }
                 }
@@ -2006,7 +1983,7 @@ impl Resolver {
             let global_barrier = if !barriers.next_accesses.is_empty() {
                 // No resource attached - we use a global barrier for these
                 trace!(
-                    "{trace_pad}barrier {:?} -> {:?}",
+                    "{trace_pad}global {:?}->{:?}",
                     barriers.next_accesses,
                     barriers.prev_accesses
                 );
@@ -2029,6 +2006,17 @@ impl Resolver {
                         offset,
                         size,
                     } = *resource;
+
+                    trace!(
+                        "{trace_pad}buffer {:?} {:?} {:?}{:?}->{:?}{:?}",
+                        buffer,
+                        offset..offset + size,
+                        prev_access,
+                        image_access_layout(*prev_access),
+                        next_access,
+                        image_access_layout(*next_access),
+                    );
+
                     BufferBarrier {
                         next_accesses: from_ref(next_access),
                         previous_accesses: from_ref(prev_access),
@@ -2048,10 +2036,30 @@ impl Resolver {
                  }| {
                     let ImageResource { image, range } = *resource;
 
+                    struct ImageSubresourceRangeDebug(vk::ImageSubresourceRange);
+
+                    impl std::fmt::Debug for ImageSubresourceRangeDebug {
+                        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            self.0.aspect_mask.fmt(f)?;
+
+                            f.write_str(" array: ")?;
+
+                            let array_layers = self.0.base_array_layer
+                                ..self.0.base_array_layer + self.0.layer_count;
+                            array_layers.fmt(f)?;
+
+                            f.write_str(" mip: ")?;
+
+                            let mip_levels =
+                                self.0.base_mip_level..self.0.base_mip_level + self.0.level_count;
+                            mip_levels.fmt(f)
+                        }
+                    }
+
                     trace!(
-                        "    barrier {:?} {:?} {:?}-{:?}->{:?}-{:?}",
+                        "{trace_pad}image {:?} {:?} {:?}{:?}->{:?}{:?}",
                         image,
-                        range,
+                        ImageSubresourceRangeDebug(range),
                         prev_access,
                         image_access_layout(*prev_access),
                         next_access,
@@ -2938,16 +2946,16 @@ impl Resolver {
                                 })
                                 .expect("input attachment not written");
                             let late = &write_exec.accesses[&attachment.target].last().unwrap();
-                            let image_subresource = late.subresource.as_image_range().unwrap();
+                            let image_range = late.subresource.as_image().unwrap();
                             let image_binding = &bindings[attachment.target];
                             let image = image_binding.as_driver_image().unwrap();
                             let image_view_info = ImageViewInfo {
-                                array_layer_count: image_subresource.layer_count,
+                                array_layer_count: image_range.layer_count,
                                 aspect_mask: attachment.aspect_mask,
-                                base_array_layer: image_subresource.base_array_layer,
-                                base_mip_level: image_subresource.base_mip_level,
+                                base_array_layer: image_range.base_array_layer,
+                                base_mip_level: image_range.base_mip_level,
                                 fmt: attachment.format,
-                                mip_level_count: image_subresource.level_count,
+                                mip_level_count: image_range.level_count,
                                 ty: image.info.ty,
                             };
                             let image_view = Image::view(image, image_view_info)?;

@@ -17,7 +17,10 @@ use {
         compute::ComputePipeline,
         device::Device,
         graphic::{DepthStencilMode, GraphicPipeline},
-        image::{Image, ImageViewInfo},
+        image::{
+            image_subresource_range_contains, image_subresource_range_intersects, Image,
+            ImageViewInfo,
+        },
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
     },
@@ -907,7 +910,7 @@ pub trait Access {
 }
 
 impl Access for ComputePipeline {
-    const DEFAULT_READ: AccessType = AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer;
+    const DEFAULT_READ: AccessType = AccessType::ComputeShaderReadOther;
     const DEFAULT_WRITE: AccessType = AccessType::ComputeShaderWrite;
 }
 
@@ -3094,8 +3097,6 @@ impl PipelinePassRef<'_, ComputePipeline> {
 impl PipelinePassRef<'_, GraphicPipeline> {
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call attach before resolve or store.
     pub fn attach_color(
         self,
         attachment_idx: AttachmentIndex,
@@ -3110,8 +3111,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call attach before resolve or store.
     pub fn attach_color_as(
         mut self,
         attachment_idx: AttachmentIndex,
@@ -3211,8 +3210,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call attach before resolve or store.
     pub fn attach_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
@@ -3223,8 +3220,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call attach before resolve or store.
     pub fn attach_depth_stencil_as(
         mut self,
         image: impl Into<AnyImageNode>,
@@ -3317,8 +3312,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_color(
         self,
         attachment_idx: AttachmentIndex,
@@ -3328,8 +3321,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_color_value(
         self,
         attachment_idx: AttachmentIndex,
@@ -3344,8 +3335,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_color_value_as(
         mut self,
         attachment_idx: AttachmentIndex,
@@ -3440,25 +3429,53 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "color attachment {attachment_idx} clear incompatible with existing store"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::ColorAttachmentWrite,
-            Subresource::Image(image_view_info.into()),
-        );
+        let mut image_access = AccessType::ColorAttachmentWrite;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+
+                if *access == AccessType::ColorAttachmentRead
+                    && image_subresource_range_intersects(access_image_range, image_range)
+                {
+                    image_access = AccessType::ColorAttachmentReadWrite;
+                    *access = AccessType::ColorAttachmentReadWrite;
+
+                    // If the load access is a subset of the existing access range there is no need
+                    // to push a new access
+                    if image_subresource_range_contains(access_image_range, image_range) {
+                        return self;
+                    }
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
         self.clear_depth_stencil_value(image, 1.0, 0)
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_depth_stencil_value(
         self,
         image: impl Into<AnyImageNode>,
@@ -3473,8 +3490,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_depth_stencil_value_as(
         mut self,
         image: impl Into<AnyImageNode>,
@@ -3571,8 +3586,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
     /// into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color(
         self,
         attachment_idx: AttachmentIndex,
@@ -3587,8 +3600,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
     /// into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color_as(
         mut self,
         attachment_idx: AttachmentIndex,
@@ -3677,19 +3688,49 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "color attachment {attachment_idx} load incompatible with existing store"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::ColorAttachmentRead,
-            Subresource::Image(image_view_info.into()),
-        );
+        let mut image_access = AccessType::ColorAttachmentRead;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing write access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+
+                if *access == AccessType::ColorAttachmentWrite
+                    && image_subresource_range_intersects(access_image_range, image_range)
+                {
+                    image_access = AccessType::ColorAttachmentReadWrite;
+                    *access = AccessType::ColorAttachmentReadWrite;
+
+                    // If the load access is a subset of the existing access range there is no need
+                    // to push a new access
+                    if image_subresource_range_contains(access_image_range, image_range) {
+                        return self;
+                    }
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
     /// into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
@@ -3700,8 +3741,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
     /// into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_depth_stencil_as(
         mut self,
         image: impl Into<AnyImageNode>,
@@ -3804,8 +3843,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
     /// attachment.
-    ///
-    /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_color(
         self,
         src_attachment_idx: AttachmentIndex,
@@ -3826,8 +3863,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
     /// attachment.
-    ///
-    /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_color_as(
         mut self,
         src_attachment_idx: AttachmentIndex,
@@ -3929,8 +3964,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
     /// attachment.
-    ///
-    /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_depth_stencil(
         self,
         dst_attachment_idx: AttachmentIndex,
@@ -3953,8 +3986,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
     /// attachment.
-    ///
-    /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_depth_stencil_as(
         mut self,
         dst_attachment_idx: AttachmentIndex,
@@ -4048,8 +4079,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
     /// rendered pixels into an image.
-    ///
-    /// _NOTE:_ Order matters, call store after clear or load.
     pub fn store_color(
         self,
         attachment_idx: AttachmentIndex,
@@ -4064,8 +4093,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
     /// rendered pixels into an image.
-    ///
-    /// _NOTE:_ Order matters, call store after clear or load.
     pub fn store_color_as(
         mut self,
         attachment_idx: AttachmentIndex,
@@ -4152,19 +4179,54 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "color attachment {attachment_idx} store incompatible with existing load"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::ColorAttachmentWrite,
-            Subresource::Image(image_view_info.into()),
-        );
+        let mut image_access = AccessType::ColorAttachmentWrite;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+
+                if *access == AccessType::ColorAttachmentRead
+                    && image_subresource_range_intersects(access_image_range, image_range)
+                {
+                    image_access = AccessType::ColorAttachmentReadWrite;
+                    *access = AccessType::ColorAttachmentReadWrite;
+
+                    // If the load access is a subset of the existing access range there is no need
+                    // to push a new access
+                    if image_subresource_range_contains(access_image_range, image_range) {
+                        return self;
+                    }
+                } else if *access == image_access
+                    && image_subresource_range_contains(access_image_range, image_range)
+                {
+                    // Duplicate access generated by clear op
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
 
     /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
     /// rendered pixels into an image.
-    ///
-    /// _NOTE:_ Order matters, call store after clear or load.
     pub fn store_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
@@ -4656,7 +4718,7 @@ pub enum Subresource {
 }
 
 impl Subresource {
-    pub(super) fn as_image_range(&self) -> Option<&vk::ImageSubresourceRange> {
+    pub(super) fn as_image(&self) -> Option<&vk::ImageSubresourceRange> {
         if let Self::Image(subresource) = self {
             Some(subresource)
         } else {

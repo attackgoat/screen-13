@@ -147,6 +147,9 @@ fn fill_mip_levels(device: &Arc<Device>, image: &Arc<Image>) -> Result<(), Drive
     let image_info = image.info;
     let image = render_graph.bind_node(image);
 
+    // NOTE: Each pass writes to a different mip level, and so although it's the same image they are
+    // unable to be used as a single pass so we must call begin_pass for each. Without starting a
+    // new pass for each level the Vulkan framebuffer would be set to the size of the first image.
     for mip_level in 0..image_info.mip_level_count {
         render_graph
             .begin_pass("fill mip levels")
