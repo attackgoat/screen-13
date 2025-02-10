@@ -249,7 +249,7 @@ impl Image {
     pub fn access(
         this: &Self,
         access: AccessType,
-        range: vk::ImageSubresourceRange,
+        mut range: vk::ImageSubresourceRange,
     ) -> impl Iterator<Item = (AccessType, vk::ImageSubresourceRange)> + '_ {
         #[cfg(debug_assertions)]
         {
@@ -258,7 +258,20 @@ impl Image {
             assert!(format_aspect_mask(this.info.fmt).contains(range.aspect_mask));
         }
 
+        if range.layer_count == vk::REMAINING_ARRAY_LAYERS {
+            debug_assert!(range.base_array_layer < this.info.array_layer_count);
+
+            range.layer_count = this.info.array_layer_count - range.base_array_layer
+        }
+
         debug_assert!(range.base_array_layer + range.layer_count <= this.info.array_layer_count);
+
+        if range.level_count == vk::REMAINING_MIP_LEVELS {
+            debug_assert!(range.base_mip_level < this.info.mip_level_count);
+
+            range.level_count = this.info.mip_level_count - range.base_mip_level
+        }
+
         debug_assert!(range.base_mip_level + range.level_count <= this.info.mip_level_count);
 
         let accesses = this.accesses.lock();

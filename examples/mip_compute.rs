@@ -125,7 +125,7 @@ fn main() -> Result<(), DriverError> {
         depth_pixel,
         vk::BufferImageCopy {
             buffer_offset: 0,
-            buffer_row_length: 4,
+            buffer_row_length: 1,
             buffer_image_height: 1,
             image_subresource: vk::ImageSubresourceLayers {
                 aspect_mask: vk::ImageAspectFlags::COLOR,

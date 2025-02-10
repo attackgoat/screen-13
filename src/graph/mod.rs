@@ -452,10 +452,10 @@ impl RenderGraph {
         let color_value = color_value.into();
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
-        let image_access_range = image_info.default_view_info();
+        let image_view_info = image_info.default_view_info();
 
         self.begin_pass("clear color")
-            .access_node_subrange(image_node, AccessType::TransferWrite, image_access_range)
+            .access_node_subrange(image_node, AccessType::TransferWrite, image_view_info)
             .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_clear_color_image(
                     cmd_buf,
@@ -464,12 +464,7 @@ impl RenderGraph {
                     &vk::ClearColorValue {
                         float32: color_value.0,
                     },
-                    &[vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        layer_count: image_info.array_layer_count,
-                        level_count: image_info.mip_level_count,
-                        ..Default::default()
-                    }],
+                    &[image_view_info.into()],
                 );
             })
             .submit_pass()
@@ -490,22 +485,17 @@ impl RenderGraph {
     ) -> &mut Self {
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
-        let image_access_range = image_info.default_view_info();
+        let image_view_info = image_info.default_view_info();
 
         self.begin_pass("clear depth/stencil")
-            .access_node_subrange(image_node, AccessType::TransferWrite, image_access_range)
+            .access_node_subrange(image_node, AccessType::TransferWrite, image_view_info)
             .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_clear_depth_stencil_image(
                     cmd_buf,
                     *bindings[image_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &vk::ClearDepthStencilValue { depth, stencil },
-                    &[vk::ImageSubresourceRange {
-                        aspect_mask: format_aspect_mask(image_info.fmt),
-                        layer_count: image_info.array_layer_count,
-                        level_count: image_info.mip_level_count,
-                        ..Default::default()
-                    }],
+                    &[image_view_info.into()],
                 );
             })
             .submit_pass()
