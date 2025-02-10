@@ -108,15 +108,13 @@ fn compile_shader(
             entry_name,
             additional_opts,
         )
-        .map_err(|err| {
+        .inspect_err(|_| {
             eprintln!("Shader: {}", path.display());
 
             for (line_index, line) in source_code.split('\n').enumerate() {
                 let line_number = line_index + 1;
                 eprintln!("{line_number}: {line}");
             }
-
-            err
         })?
         .as_binary_u8()
         .to_vec();

@@ -81,10 +81,11 @@ pub(crate) fn image_subresource_range_intersects(
 /// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::image::{Image, ImageInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let info = ImageInfo::image_1d(1, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE);
 /// # let my_image = Image::create(&device, info)?;
-/// let prev = Image::access(&my_image, AccessType::AnyShaderWrite);
+/// # let my_subresource_range = vk::ImageSubresourceRange::default();
+/// let prev = Image::access(&my_image, AccessType::AnyShaderWrite, my_subresource_range);
 /// # Ok(()) }
 /// ```
 ///
@@ -222,20 +223,21 @@ impl Image {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::image::{Image, ImageInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let info = ImageInfo::image_1d(1, vk::Format::R8_UINT, vk::ImageUsageFlags::STORAGE);
     /// # let my_image = Image::create(&device, info)?;
+    /// # let my_subresource_range = vk::ImageSubresourceRange::default();
     /// // Initially we want to "Read Other"
     /// let next = AccessType::AnyShaderReadOther;
-    /// let prev = Image::access(&my_image, next);
-    /// assert_eq!(prev, AccessType::Nothing);
+    /// let mut prev = Image::access(&my_image, next, my_subresource_range);
+    /// assert_eq!(prev.next().unwrap().0, AccessType::Nothing);
     ///
     /// // External code may now "Read Other"; no barrier required
     ///
     /// // Subsequently we want to "Write"
     /// let next = AccessType::FragmentShaderWrite;
-    /// let prev = Image::access(&my_image, next);
-    /// assert_eq!(prev, AccessType::AnyShaderReadOther);
+    /// let mut prev = Image::access(&my_image, next, my_subresource_range);
+    /// assert_eq!(prev.next().unwrap().0, AccessType::AnyShaderReadOther);
     ///
     /// // A barrier on "Read Other" before "Write" is required!
     /// # Ok(()) }

@@ -242,25 +242,28 @@ impl AccelerationStructure {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureGeometry, AccelerationStructureGeometryData, AccelerationStructureGeometryInfo, DeviceOrHostAddress};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-    /// # let my_geom = AccelerationStructureGeometryData::Triangles {
-    /// #     index_data: DeviceOrHostAddress::DeviceAddress(0),
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+    /// # let my_geom_triangles = AccelerationStructureGeometryData::Triangles {
+    /// #     index_addr: DeviceOrHostAddress::DeviceAddress(0),
     /// #     index_type: vk::IndexType::UINT32,
     /// #     max_vertex: 1,
-    /// #     transform_data: None,
-    /// #     vertex_data: DeviceOrHostAddress::DeviceAddress(0),
+    /// #     transform_addr: None,
+    /// #     vertex_addr: DeviceOrHostAddress::DeviceAddress(0),
     /// #     vertex_format: vk::Format::R32G32B32_SFLOAT,
     /// #     vertex_stride: 12,
     /// # };
-    /// let my_info = AccelerationStructureGeometryInfo {
-    ///     ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-    ///     flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-    ///     geometries: vec![AccelerationStructureGeometry {
-    ///         max_primitive_count: 1,
-    ///         flags: vk::GeometryFlagsKHR::OPAQUE,
-    ///         geometry: my_geom,
-    ///     }],
+    /// let my_geom = AccelerationStructureGeometry {
+    ///     max_primitive_count: 1,
+    ///     flags: vk::GeometryFlagsKHR::OPAQUE,
+    ///     geometry: my_geom_triangles,
     /// };
+    /// let build_range = vk::AccelerationStructureBuildRangeInfoKHR {
+    ///     primitive_count: 1,
+    ///     primitive_offset: 0,
+    ///     first_vertex: 0,
+    ///     transform_offset: 0,
+    /// };
+    /// let my_info = AccelerationStructureGeometryInfo::blas([(my_geom, build_range)]);
     /// let res = AccelerationStructure::size_of(&device, &my_info);
     ///
     /// assert_eq!(res.create_size, 2432);

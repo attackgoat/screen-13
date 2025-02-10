@@ -106,7 +106,7 @@ impl Acceleration<'_> {
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let mut my_graph = RenderGraph::new();
     /// # let info = AccelerationStructureInfo::blas(1);
     /// # let blas_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -126,35 +126,32 @@ impl Acceleration<'_> {
     ///         .write_node(blas_node)
     ///         .write_node(scratch_buf)
     ///         .record_acceleration(move |acceleration, bindings| {
-    ///             let info = AccelerationStructureGeometryInfo {
-    ///                 ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-    ///                 flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-    ///                 geometries: vec![AccelerationStructureGeometry {
-    ///                     max_primitive_count: 64,
-    ///                     flags: vk::GeometryFlagsKHR::OPAQUE,
-    ///                     geometry: AccelerationStructureGeometryData::Triangles {
-    ///                         index_data: DeviceOrHostAddress::DeviceAddress(
-    ///                             Buffer::device_address(&bindings[index_node])
-    ///                         ),
-    ///                         index_type: vk::IndexType::UINT32,
-    ///                         max_vertex: 42,
-    ///                         transform_data: None,
-    ///                         vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
-    ///                             &bindings[vertex_node],
-    ///                         )),
-    ///                         vertex_format: vk::Format::R32G32B32_SFLOAT,
-    ///                         vertex_stride: 12,
-    ///                     },
-    ///                 }],
+    ///             let geom = AccelerationStructureGeometry {
+    ///                 max_primitive_count: 64,
+    ///                 flags: vk::GeometryFlagsKHR::OPAQUE,
+    ///                 geometry: AccelerationStructureGeometryData::Triangles {
+    ///                     index_addr: DeviceOrHostAddress::DeviceAddress(
+    ///                         Buffer::device_address(&bindings[index_node])
+    ///                     ),
+    ///                     index_type: vk::IndexType::UINT32,
+    ///                     max_vertex: 42,
+    ///                     transform_addr: None,
+    ///                     vertex_addr: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
+    ///                         &bindings[vertex_node],
+    ///                     )),
+    ///                     vertex_format: vk::Format::R32G32B32_SFLOAT,
+    ///                     vertex_stride: 12,
+    ///                 },
     ///             };
-    ///             let ranges = vk::AccelerationStructureBuildRangeInfoKHR {
+    ///             let build_range = vk::AccelerationStructureBuildRangeInfoKHR {
     ///                 first_vertex: 0,
     ///                 primitive_count: 1,
     ///                 primitive_offset: 0,
     ///                 transform_offset: 0,
     ///             };
+    ///             let info = AccelerationStructureGeometryInfo::blas([(geom, build_range)]);
     ///
-    ///             acceleration.build_structure(blas_node, scratch_buf, &info, &[ranges]);
+    ///             acceleration.build_structure(&info, blas_node, Buffer::device_address(&bindings[scratch_buf]));
     ///         });
     /// # Ok(()) }
     /// ```
@@ -4371,8 +4368,8 @@ impl PipelinePassRef<'_, RayTracePipeline> {
 /// # use screen_13::driver::shader::Shader;
 /// # use screen_13::graph::RenderGraph;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-/// # let info = RayTracePipelineInfo::new();
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+/// # let info = RayTracePipelineInfo::default();
 /// # let my_miss_code = [0u8; 1];
 /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
 ///     [Shader::new_miss(my_miss_code.as_slice())],
@@ -4442,9 +4439,9 @@ impl RayTrace<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let shader = [0u8; 1];
-    /// # let info = RayTracePipelineInfo::new();
+    /// # let info = RayTracePipelineInfo::default();
     /// # let my_miss_code = [0u8; 1];
     /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
     /// #     [Shader::new_miss(my_miss_code.as_slice())],
@@ -4512,9 +4509,9 @@ impl RayTrace<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let shader = [0u8; 1];
-    /// # let info = RayTracePipelineInfo::new();
+    /// # let info = RayTracePipelineInfo::default();
     /// # let my_miss_code = [0u8; 1];
     /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
     /// #     [Shader::new_miss(my_miss_code.as_slice())],
@@ -4611,9 +4608,9 @@ impl RayTrace<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let shader = [0u8; 1];
-    /// # let info = RayTracePipelineInfo::new();
+    /// # let info = RayTracePipelineInfo::default();
     /// # let my_miss_code = [0u8; 1];
     /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
     /// #     [Shader::new_miss(my_miss_code.as_slice())],
