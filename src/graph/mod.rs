@@ -36,7 +36,7 @@ use {
         format_aspect_mask, format_texel_block_size,
         graphic::{DepthStencilMode, GraphicPipeline},
         image::{ImageType, ImageViewInfo, SampleCount},
-        image_subresource_range_from_layers, is_write_access,
+        image_subresource_range_from_layers,
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
         shader::PipelineDescriptorInfo,
@@ -911,24 +911,6 @@ impl RenderGraph {
                 }
             })
             .submit_pass()
-    }
-
-    #[profiling::function]
-    pub(super) fn last_write(&self, node: impl Node) -> Option<AccessType> {
-        let node_idx = node.index();
-
-        self.passes
-            .iter()
-            .rev()
-            .flat_map(|pass| pass.execs.iter().rev())
-            .find_map(|exec| {
-                exec.accesses.get(&node_idx).and_then(|accesses| {
-                    accesses
-                        .iter()
-                        .map(|access| access.access)
-                        .find(|access| is_write_access(*access))
-                })
-            })
     }
 
     /// Returns the index of the first pass which accesses a given node

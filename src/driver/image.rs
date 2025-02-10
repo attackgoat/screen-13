@@ -292,8 +292,16 @@ impl Image {
         let mut image_view_cache = image_view_cache.unwrap();
 
         let image_view_cache = take(&mut *image_view_cache);
+
+        // Moves the image accesses from the current instance to the clone!
+        #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+        let mut accesses = this.accesses.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut accesses = accesses.unwrap();
+
         let Self { image, info, .. } = *this;
-        let accesses = Mutex::new(ImageAccess::new(info));
+        let accesses = Mutex::new(replace(&mut *accesses, ImageAccess::new(info)));
 
         Self {
             accesses,
@@ -346,10 +354,18 @@ impl Image {
     pub fn from_raw(device: &Arc<Device>, image: vk::Image, info: impl Into<ImageInfo>) -> Self {
         let device = Arc::clone(device);
         let info = info.into();
-        let accesses = Mutex::new(ImageAccess::new(info));
+        let mut accesses = ImageAccess::new(info);
+
+        // For now default all image access to general, but maybe make this configurable later.
+        // This helps make sure the first presentation of a swapchain image doesn't throw a
+        // validation error, but it could also be very useful for raw vulkan images from other
+        // sources.
+        for access in &mut accesses.accesses {
+            *access = AccessType::General;
+        }
 
         Self {
-            accesses,
+            accesses: Mutex::new(accesses),
             allocation: None,
             device,
             image,

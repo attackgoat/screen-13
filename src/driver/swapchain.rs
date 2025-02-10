@@ -4,7 +4,7 @@ use {
     super::{
         device::Device,
         image::{Image, ImageInfo},
-        DriverError, Surface,
+        AccessType, DriverError, Surface,
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
@@ -528,6 +528,14 @@ pub struct SwapchainImage {
 }
 
 impl SwapchainImage {
+    pub(crate) fn access(
+        &mut self,
+        access: AccessType,
+        range: vk::ImageSubresourceRange,
+    ) -> impl Iterator<Item = (AccessType, vk::ImageSubresourceRange)> + '_ {
+        Image::access(self, access, range)
+    }
+
     pub(crate) fn unbind(&mut self) -> Self {
         let &mut Self {
             acquired,

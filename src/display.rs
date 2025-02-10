@@ -11,12 +11,13 @@ use {
     ash::vk,
     log::trace,
     std::{
+        cell::RefCell,
         error::Error,
         fmt::{Debug, Formatter},
         sync::Arc,
         time::Instant,
     },
-    vk_sync::{cmd::pipeline_barrier, AccessType, ImageBarrier, ImageLayout},
+    vk_sync::{cmd::pipeline_barrier, AccessType, ImageBarrier},
 };
 
 /// A physical display interface.
@@ -73,12 +74,14 @@ impl Display {
 
         trace!("present_image");
 
-        // The swapchain should have been written to, otherwise it would be noise and that's a panic
-        let last_swapchain_access = render_graph
-            .last_write(swapchain_image)
-            .expect("uninitialized swapchain image: write something each frame!");
         let mut resolver = render_graph.resolve();
         let wait_dst_stage_mask = resolver.node_pipeline_stages(swapchain_image);
+
+        // The swapchain should have been written to, otherwise it would be noise and that's a panic
+        assert!(
+            !wait_dst_stage_mask.is_empty(),
+            "uninitialized swapchain image: write something each frame!",
+        );
 
         self.cmd_buf_idx += 1;
         self.cmd_buf_idx %= self.cmd_bufs.len();
@@ -98,31 +101,60 @@ impl Display {
         // resolver.record_node_dependencies(&mut *self.pool, cmd_buf, swapchain_image)?;
         resolver.record_node(&mut *self.pool, cmd_buf, swapchain_image)?;
 
-        let swapchain_image = resolver.unbind_node(swapchain_image);
+        let mut swapchain_image = resolver.unbind_node(swapchain_image);
+        let image = **swapchain_image;
 
-        pipeline_barrier(
-            &cmd_buf.device,
-            **cmd_buf,
-            None,
-            &[],
-            from_ref(&ImageBarrier {
-                previous_accesses: from_ref(&last_swapchain_access),
-                next_accesses: from_ref(&AccessType::Present),
-                previous_layout: image_access_layout(last_swapchain_access),
-                next_layout: ImageLayout::General,
-                discard_contents: false,
-                src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
-                image: **swapchain_image,
-                range: vk::ImageSubresourceRange {
-                    layer_count: 1,
+        thread_local! {
+            static TLS: RefCell<Vec<(AccessType, vk::ImageSubresourceRange)>> = Default::default();
+        }
+
+        TLS.with_borrow_mut(|tls| {
+            for (access, range) in swapchain_image.access(
+                AccessType::Present,
+                vk::ImageSubresourceRange {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
                     base_array_layer: 0,
                     base_mip_level: 0,
+                    layer_count: 1,
                     level_count: 1,
                 },
-            }),
-        );
+            ) {
+                tls.push((access, range));
+
+                trace!(
+                    "swapchain image {:?} {:?}{:?}->{:?}{:?}",
+                    image,
+                    access,
+                    image_access_layout(access),
+                    AccessType::Present,
+                    image_access_layout(AccessType::Present),
+                );
+
+                // Force a presentation layout transition
+                pipeline_barrier(
+                    &cmd_buf.device,
+                    **cmd_buf,
+                    None,
+                    &[],
+                    from_ref(&ImageBarrier {
+                        previous_accesses: from_ref(&access),
+                        previous_layout: image_access_layout(access),
+                        next_accesses: from_ref(&AccessType::Present),
+                        next_layout: image_access_layout(AccessType::Present),
+                        discard_contents: false,
+                        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        image,
+                        range,
+                    }),
+                );
+            }
+
+            // Now force the image to actually wait on the previous operations
+            for (access, range) in tls.drain(..) {
+                for _ in swapchain_image.access(access, range) {}
+            }
+        });
 
         // We may have unresolved nodes; things like copies that happen after present or operations
         // before present which use nodes that are unused in the remainder of the graph.
