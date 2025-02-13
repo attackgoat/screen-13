@@ -56,7 +56,7 @@ For example, a typical host-mappable buffer:
 # use screen_13::driver::device::{Device, DeviceInfo};
 # use screen_13::driver::buffer::{Buffer, BufferInfo};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 let info = BufferInfo::host_mem(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
 let my_buf = Buffer::create(&device, info)?;
 # Ok(()) }
@@ -78,7 +78,7 @@ For example, a graphics pipeline:
 # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
 # use screen_13::driver::shader::Shader;
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 # let my_frag_code = [0u8; 1];
 # let my_vert_code = [0u8; 1];
 // shader code is raw SPIR-V code as bytes
@@ -240,7 +240,7 @@ Pipeline instances may be bound to a [`PassRef`] in order to execute the associa
 # use screen_13::driver::shader::{Shader};
 # use screen_13::graph::RenderGraph;
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 # let my_shader_code = [0u8; 1];
 # let info = ComputePipelineInfo::default();
 # let shader = Shader::new_compute(my_shader_code.as_slice());
@@ -338,7 +338,7 @@ pub mod prelude {
                 AccelerationStructureSize, DeviceOrHostAddress,
             },
             ash::vk,
-            buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
+            buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresourceRange},
             compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
             device::{Device, DeviceInfo, DeviceInfoBuilder},
             graphic::{

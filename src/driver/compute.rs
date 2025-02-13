@@ -59,7 +59,7 @@ impl ComputePipeline {
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
     /// # use screen_13::driver::shader::{Shader};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_shader_code = [0u8; 1];
     /// // my_shader_code is raw SPIR-V code as bytes
     /// let shader = Shader::new_compute(my_shader_code.as_slice());

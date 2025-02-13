@@ -1931,7 +1931,6 @@ impl Resolver {
                     }
                     Binding::Buffer(..) | Binding::BufferLease(..) => {
                         let buffer = binding.as_driver_buffer().unwrap();
-                        let prev_access = Buffer::access(buffer, accesses.last().unwrap().access);
 
                         for &SubresourceAccess {
                             access,
@@ -1942,15 +1941,17 @@ impl Resolver {
                                 unreachable!()
                             };
 
-                            barriers.buffers.push(Barrier {
-                                next_access: access,
-                                prev_access,
-                                resource: BufferResource {
-                                    buffer: **buffer,
-                                    offset: range.start as _,
-                                    size: (range.end - range.start) as _,
-                                },
-                            });
+                            for (prev_access, range) in Buffer::access(buffer, access, range) {
+                                barriers.buffers.push(Barrier {
+                                    next_access: access,
+                                    prev_access,
+                                    resource: BufferResource {
+                                        buffer: **buffer,
+                                        offset: range.start as _,
+                                        size: (range.end - range.start) as _,
+                                    },
+                                });
+                            }
                         }
                     }
                     Binding::Image(..) | Binding::ImageLease(..) | Binding::SwapchainImage(..) => {

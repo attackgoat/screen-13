@@ -249,37 +249,41 @@ impl Image {
     pub fn access(
         this: &Self,
         access: AccessType,
-        mut range: vk::ImageSubresourceRange,
+        mut access_range: vk::ImageSubresourceRange,
     ) -> impl Iterator<Item = (AccessType, vk::ImageSubresourceRange)> + '_ {
         #[cfg(debug_assertions)]
         {
-            assert_aspect_mask_supported(range.aspect_mask);
+            assert_aspect_mask_supported(access_range.aspect_mask);
 
-            assert!(format_aspect_mask(this.info.fmt).contains(range.aspect_mask));
+            assert!(format_aspect_mask(this.info.fmt).contains(access_range.aspect_mask));
         }
 
-        if range.layer_count == vk::REMAINING_ARRAY_LAYERS {
-            debug_assert!(range.base_array_layer < this.info.array_layer_count);
+        if access_range.layer_count == vk::REMAINING_ARRAY_LAYERS {
+            debug_assert!(access_range.base_array_layer < this.info.array_layer_count);
 
-            range.layer_count = this.info.array_layer_count - range.base_array_layer
+            access_range.layer_count = this.info.array_layer_count - access_range.base_array_layer
         }
 
-        debug_assert!(range.base_array_layer + range.layer_count <= this.info.array_layer_count);
+        debug_assert!(
+            access_range.base_array_layer + access_range.layer_count <= this.info.array_layer_count
+        );
 
-        if range.level_count == vk::REMAINING_MIP_LEVELS {
-            debug_assert!(range.base_mip_level < this.info.mip_level_count);
+        if access_range.level_count == vk::REMAINING_MIP_LEVELS {
+            debug_assert!(access_range.base_mip_level < this.info.mip_level_count);
 
-            range.level_count = this.info.mip_level_count - range.base_mip_level
+            access_range.level_count = this.info.mip_level_count - access_range.base_mip_level
         }
 
-        debug_assert!(range.base_mip_level + range.level_count <= this.info.mip_level_count);
+        debug_assert!(
+            access_range.base_mip_level + access_range.level_count <= this.info.mip_level_count
+        );
 
         let accesses = this.accesses.lock();
 
         #[cfg(not(feature = "parking_lot"))]
         let accesses = accesses.unwrap();
 
-        ImageAccessIter::new(accesses, access, range)
+        ImageAccessIter::new(accesses, access, access_range)
     }
 
     #[profiling::function]
@@ -478,38 +482,35 @@ impl ImageAccess {
     }
 }
 
-struct ImageAccessIter<T>
-where
-    T: DerefMut<Target = ImageAccess>,
-{
+struct ImageAccessIter<T> {
     access: AccessType,
+    access_range: ImageAccessRange,
     array_layer: u32,
     aspect: u8,
     image: T,
     mip_level: u32,
-    range: ImageAccessRange,
 }
 
-impl<T> ImageAccessIter<T>
-where
-    T: DerefMut<Target = ImageAccess>,
-{
-    fn new(image: T, access: AccessType, range: vk::ImageSubresourceRange) -> Self {
+impl<T> ImageAccessIter<T> {
+    fn new(image: T, access: AccessType, access_range: vk::ImageSubresourceRange) -> Self
+    where
+        T: DerefMut<Target = ImageAccess>,
+    {
         #[cfg(debug_assertions)]
-        assert_aspect_mask_supported(range.aspect_mask);
+        assert_aspect_mask_supported(access_range.aspect_mask);
 
         #[cfg(debug_assertions)]
-        assert!(range.base_array_layer < image.array_layer_count);
+        assert!(access_range.base_array_layer < image.array_layer_count);
 
-        debug_assert!(range.base_mip_level < image.mip_level_count);
-        debug_assert_ne!(range.layer_count, 0);
-        debug_assert_ne!(range.level_count, 0);
+        debug_assert!(access_range.base_mip_level < image.mip_level_count);
+        debug_assert_ne!(access_range.layer_count, 0);
+        debug_assert_ne!(access_range.level_count, 0);
 
-        let aspect_count = range.aspect_mask.as_raw().count_ones() as _;
+        let aspect_count = access_range.aspect_mask.as_raw().count_ones() as _;
 
         debug_assert!(aspect_count <= image.aspect_count);
 
-        let base_aspect = range.aspect_mask.as_raw().trailing_zeros() as _;
+        let base_aspect = access_range.aspect_mask.as_raw().trailing_zeros() as _;
 
         Self {
             access,
@@ -517,13 +518,13 @@ where
             aspect: 0,
             image,
             mip_level: 0,
-            range: ImageAccessRange {
+            access_range: ImageAccessRange {
                 aspect_count,
-                base_array_layer: range.base_array_layer,
+                base_array_layer: access_range.base_array_layer,
                 base_aspect,
-                base_mip_level: range.base_mip_level,
-                layer_count: range.layer_count,
-                level_count: range.level_count,
+                base_mip_level: access_range.base_mip_level,
+                layer_count: access_range.layer_count,
+                level_count: access_range.level_count,
             },
         }
     }
@@ -536,21 +537,21 @@ where
     type Item = (AccessType, vk::ImageSubresourceRange);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.aspect == self.range.aspect_count {
+        if self.aspect == self.access_range.aspect_count {
             return None;
         }
 
         let mut res = vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::from_raw(
-                (1 << (self.range.base_aspect + self.aspect)) as _,
+                (1 << (self.access_range.base_aspect + self.aspect)) as _,
             ),
-            base_array_layer: self.range.base_array_layer + self.array_layer,
-            base_mip_level: self.range.base_mip_level + self.mip_level,
+            base_array_layer: self.access_range.base_array_layer + self.array_layer,
+            base_mip_level: self.access_range.base_mip_level + self.mip_level,
             layer_count: 1,
             level_count: 1,
         };
 
-        let base_aspect = (self.image.aspect_count << self.range.base_aspect == 8) as u8;
+        let base_aspect = (self.image.aspect_count << self.access_range.base_aspect == 8) as u8;
         let prev_access = replace(
             {
                 let idx = self.image.idx(
@@ -566,15 +567,15 @@ where
 
         loop {
             self.mip_level += 1;
-            self.mip_level %= self.range.level_count;
+            self.mip_level %= self.access_range.level_count;
             if self.mip_level == 0 {
                 break;
             }
 
             let idx = self.image.idx(
                 base_aspect + self.aspect,
-                self.range.base_array_layer + self.array_layer,
-                self.range.base_mip_level + self.mip_level,
+                self.access_range.base_array_layer + self.array_layer,
+                self.access_range.base_mip_level + self.mip_level,
             );
             let access = unsafe { self.image.accesses.get_unchecked_mut(idx) };
             if *access != prev_access {
@@ -587,19 +588,19 @@ where
 
         loop {
             self.array_layer += 1;
-            self.array_layer %= self.range.layer_count;
+            self.array_layer %= self.access_range.layer_count;
             if self.array_layer == 0 {
                 break;
             }
 
-            if res.base_mip_level != self.range.base_mip_level {
+            if res.base_mip_level != self.access_range.base_mip_level {
                 return Some((prev_access, res));
             }
 
-            let array_layer = self.range.base_array_layer + self.array_layer;
-            let end_mip_level = self.range.base_mip_level + self.range.level_count;
+            let array_layer = self.access_range.base_array_layer + self.array_layer;
+            let end_mip_level = self.access_range.base_mip_level + self.access_range.level_count;
 
-            for mip_level in self.range.base_mip_level..end_mip_level {
+            for mip_level in self.access_range.base_mip_level..end_mip_level {
                 let idx = self
                     .image
                     .idx(base_aspect + self.aspect, array_layer, mip_level);
@@ -609,7 +610,7 @@ where
                 }
             }
 
-            for mip_level in self.range.base_mip_level..end_mip_level {
+            for mip_level in self.access_range.base_mip_level..end_mip_level {
                 let idx = self
                     .image
                     .idx(base_aspect + self.aspect, array_layer, mip_level);
@@ -622,15 +623,16 @@ where
 
         loop {
             self.aspect += 1;
-            if self.aspect == self.range.aspect_count {
+            if self.aspect == self.access_range.aspect_count {
                 return Some((prev_access, res));
             }
 
-            let end_array_layer = self.range.base_array_layer + self.range.layer_count;
-            let end_mip_level = self.range.base_mip_level + self.range.level_count;
+            let end_array_layer =
+                self.access_range.base_array_layer + self.access_range.layer_count;
+            let end_mip_level = self.access_range.base_mip_level + self.access_range.level_count;
 
-            for array_layer in self.range.base_array_layer..end_array_layer {
-                for mip_level in self.range.base_mip_level..end_mip_level {
+            for array_layer in self.access_range.base_array_layer..end_array_layer {
+                for mip_level in self.access_range.base_mip_level..end_mip_level {
                     let idx = self
                         .image
                         .idx(base_aspect + self.aspect, array_layer, mip_level);
@@ -641,8 +643,8 @@ where
                 }
             }
 
-            for array_layer in self.range.base_array_layer..end_array_layer {
-                for mip_level in self.range.base_mip_level..end_mip_level {
+            for array_layer in self.access_range.base_array_layer..end_array_layer {
+                for mip_level in self.access_range.base_mip_level..end_mip_level {
                     let idx = self
                         .image
                         .idx(base_aspect + self.aspect, array_layer, mip_level);
@@ -651,8 +653,9 @@ where
                 }
             }
 
-            res.aspect_mask |=
-                vk::ImageAspectFlags::from_raw((1 << (self.range.base_aspect + self.aspect)) as _)
+            res.aspect_mask |= vk::ImageAspectFlags::from_raw(
+                (1 << (self.access_range.base_aspect + self.aspect)) as _,
+            )
         }
     }
 }

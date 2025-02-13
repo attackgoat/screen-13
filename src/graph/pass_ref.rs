@@ -13,7 +13,7 @@ use {
             AccelerationStructure, AccelerationStructureGeometry,
             AccelerationStructureGeometryInfo, DeviceOrHostAddress,
         },
-        buffer::{Buffer, BufferSubresource},
+        buffer::{Buffer, BufferSubresourceRange},
         compute::ComputePipeline,
         device::Device,
         graphic::{DepthStencilMode, GraphicPipeline},
@@ -66,7 +66,7 @@ pub type DescriptorSetIndex = u32;
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::driver::shader::Shader;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let mut my_graph = RenderGraph::new();
 /// # let info = AccelerationStructureInfo::blas(1);
 /// my_graph.begin_pass("my acceleration pass")
@@ -1027,7 +1027,7 @@ bind!(RayTrace);
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::graph::node::ImageNode;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
 /// # let image = Image::create(&device, info)?;
 /// # let mut my_graph = RenderGraph::new();
@@ -1166,7 +1166,7 @@ impl Index<AnyImageNode> for Bindings<'_> {
 /// # use screen_13::driver::shader::{Shader};
 /// # use screen_13::graph::RenderGraph;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let info = ComputePipelineInfo::default();
 /// # let shader = Shader::new_compute([0u8; 1].as_slice());
 /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -1220,7 +1220,7 @@ impl Compute<'_> {
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
     /// # let info = ComputePipelineInfo::default();
@@ -1306,7 +1306,7 @@ impl Compute<'_> {
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
     /// # let info = ComputePipelineInfo::default();
@@ -1402,7 +1402,7 @@ impl Compute<'_> {
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let info = ComputePipelineInfo::default();
     /// # let shader = Shader::new_compute([0u8; 1].as_slice());
     /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -1464,7 +1464,7 @@ impl Compute<'_> {
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let info = ComputePipelineInfo::default();
     /// # let shader = Shader::new_compute([0u8; 1].as_slice());
     /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -1601,7 +1601,7 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::driver::shader::Shader;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let my_frag_code = [0u8; 1];
 /// # let my_vert_code = [0u8; 1];
 /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -1644,7 +1644,7 @@ impl Draw<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -1722,7 +1722,7 @@ impl Draw<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::VERTEX_BUFFER);
     /// # let my_vtx_buf = Buffer::create(&device, buf_info)?;
     /// # let my_frag_code = [0u8; 1];
@@ -1901,7 +1901,7 @@ impl Draw<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -2112,7 +2112,7 @@ impl Draw<'_> {
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -2181,7 +2181,7 @@ impl Draw<'_> {
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -4711,7 +4711,7 @@ pub enum Subresource {
     Image(vk::ImageSubresourceRange),
 
     /// Buffers may be partially bound.
-    Buffer(BufferSubresource),
+    Buffer(BufferSubresourceRange),
 }
 
 impl Subresource {
@@ -4736,8 +4736,8 @@ impl From<vk::ImageSubresourceRange> for Subresource {
     }
 }
 
-impl From<BufferSubresource> for Subresource {
-    fn from(subresource: BufferSubresource) -> Self {
+impl From<BufferSubresourceRange> for Subresource {
+    fn from(subresource: BufferSubresourceRange) -> Self {
         Self::Buffer(subresource)
     }
 }
@@ -4777,8 +4777,8 @@ impl View for AnyAccelerationStructureNode {
 }
 
 impl View for AnyBufferNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = BufferSubresourceRange;
+    type Subresource = BufferSubresourceRange;
 }
 
 impl View for AnyImageNode {
@@ -4787,13 +4787,13 @@ impl View for AnyImageNode {
 }
 
 impl View for BufferLeaseNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = BufferSubresourceRange;
+    type Subresource = BufferSubresourceRange;
 }
 
 impl View for BufferNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = BufferSubresourceRange;
+    type Subresource = BufferSubresourceRange;
 }
 
 impl View for ImageLeaseNode {
@@ -4846,8 +4846,8 @@ impl From<()> for ViewType {
     }
 }
 
-impl From<BufferSubresource> for ViewType {
-    fn from(subresource: BufferSubresource) -> Self {
+impl From<BufferSubresourceRange> for ViewType {
+    fn from(subresource: BufferSubresourceRange) -> Self {
         Self::Buffer(subresource.start..subresource.end)
     }
 }

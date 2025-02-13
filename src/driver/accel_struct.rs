@@ -1,24 +1,25 @@
 //! Acceleration structure resource types
 
 use {
-    super::{
-        access_type_from_u8, access_type_into_u8, device::Device, Buffer, BufferInfo, DriverError,
-    },
+    super::{device::Device, Buffer, BufferInfo, DriverError},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::warn,
     std::{
         ffi::c_void,
-        mem::size_of_val,
+        mem::{replace, size_of_val},
         ops::Deref,
-        sync::{
-            atomic::{AtomicU8, Ordering},
-            Arc,
-        },
+        sync::Arc,
         thread::panicking,
     },
     vk_sync::AccessType,
 };
+
+#[cfg(feature = "parking_lot")]
+use parking_lot::Mutex;
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 /// Smart pointer handle to an [acceleration structure] object.
 ///
@@ -39,7 +40,7 @@ use {
 /// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # const SIZE: vk::DeviceSize = 1024;
 /// # let info = AccelerationStructureInfo::blas(SIZE);
 /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -52,13 +53,12 @@ use {
 /// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 #[derive(Debug)]
 pub struct AccelerationStructure {
+    access: Mutex<AccessType>,
     accel_struct: (vk::AccelerationStructureKHR, Buffer),
     device: Arc<Device>,
 
     /// Information used to create this object.
     pub info: AccelerationStructureInfo,
-
-    prev_access: AtomicU8,
 }
 
 impl AccelerationStructure {
@@ -75,7 +75,7 @@ impl AccelerationStructure {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// const SIZE: vk::DeviceSize = 1024;
     /// let info = AccelerationStructureInfo::blas(SIZE);
     /// let accel_struct = AccelerationStructure::create(&device, info)?;
@@ -128,10 +128,10 @@ impl AccelerationStructure {
         let device = Arc::clone(device);
 
         Ok(AccelerationStructure {
+            access: Mutex::new(AccessType::Nothing),
             accel_struct: (accel_struct, buffer),
             device,
             info,
-            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         })
     }
 
@@ -157,7 +157,7 @@ impl AccelerationStructure {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = AccelerationStructureInfo::blas(SIZE);
     /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -180,11 +180,14 @@ impl AccelerationStructure {
     /// [_Ash_]: https://crates.io/crates/ash
     /// [_Erupt_]: https://crates.io/crates/erupt
     #[profiling::function]
-    pub fn access(this: &Self, next_access: AccessType) -> AccessType {
-        access_type_from_u8(
-            this.prev_access
-                .swap(access_type_into_u8(next_access), Ordering::Relaxed),
-        )
+    pub fn access(this: &Self, access: AccessType) -> AccessType {
+        #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
+        let mut access_guard = this.access.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut access_guard = access_guard.unwrap();
+
+        replace(&mut access_guard, access)
     }
 
     /// Returns the device address of this object.
@@ -200,7 +203,7 @@ impl AccelerationStructure {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::accel_struct::{AccelerationStructure, AccelerationStructureInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = AccelerationStructureInfo::blas(SIZE);
     /// # let my_accel_struct = AccelerationStructure::create(&device, info)?;
