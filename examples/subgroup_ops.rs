@@ -1,5 +1,6 @@
 use {
     bytemuck::cast_slice,
+    clap::Parser,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     std::{mem::size_of, sync::Arc, time::Instant},
@@ -28,7 +29,9 @@ use {
 fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
-    let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+    let args = Args::parse();
+    let device_info = DeviceInfoBuilder::default().debug(args.debug);
+    let device = Arc::new(Device::create_headless(device_info)?);
     let Vulkan11Properties {
         subgroup_size,
         subgroup_supported_operations,
@@ -253,4 +256,11 @@ fn create_exclusive_sum_pipeline(
             }),
         )?
     ))
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

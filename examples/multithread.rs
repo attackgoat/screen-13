@@ -2,11 +2,12 @@ mod profile_with_puffin;
 
 use {
     bmfont::{BMFont, OrdinateOrientation},
+    clap::Parser,
     image::ImageReader,
     log::info,
     screen_13::prelude::*,
     screen_13_fx::BitmapFont,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::{
         collections::VecDeque,
         io::Cursor,
@@ -36,7 +37,11 @@ fn main() -> anyhow::Result<()> {
     let started_at = Instant::now();
 
     // For this example we don't use V-Sync so that we are able to submit work as often as possible
-    let event_loop = Window::builder().v_sync(false).build()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
+        .v_sync(false)
+        .build()?;
 
     // We want to create one hardware queue for each CPU, or at least two
     let desired_queue_count = available_parallelism()
@@ -44,7 +49,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_default()
         .min(8);
 
-    let secondary_queue_family = event_loop
+    let secondary_queue_family = window
         .device
         .physical_device
         .queue_families
@@ -83,7 +88,7 @@ fn main() -> anyhow::Result<()> {
 
     for thread_index in 0..thread_count {
         let running = Arc::clone(&running);
-        let device = Arc::clone(&event_loop.device);
+        let device = Arc::clone(&window.device);
         let tx = tx.clone();
         threads.push(spawn(move || {
             let queue_index = thread_index;
@@ -130,11 +135,11 @@ fn main() -> anyhow::Result<()> {
         }));
     }
 
-    let mut font = load_font(&event_loop.device)?;
+    let mut font = load_font(&window.device)?;
     let mut images = VecDeque::new();
 
     let mut previous_frame = Instant::now();
-    event_loop.run(|frame| {
+    window.run(|frame| {
         let current_frame = Instant::now();
         let elapsed = current_frame - previous_frame;
         previous_frame = current_frame;
@@ -256,4 +261,11 @@ fn load_font(device: &Arc<Device>) -> anyhow::Result<BitmapFont> {
         .submit(&mut HashPool::new(device), 0, 0)?;
 
     BitmapFont::new(device, font, [page_0])
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

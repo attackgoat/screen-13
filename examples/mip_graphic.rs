@@ -261,7 +261,7 @@ fn splat(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, DriverError> {
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
-    /// Enable Vulkan SDK validation layers.
+    /// Enable Vulkan SDK validation layers
     #[arg(long)]
     debug: bool,
 }

@@ -2,10 +2,11 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{cast_slice, Pod, Zeroable},
+    clap::Parser,
     half::f16,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
-    screen_13_window::{FrameContext, Window},
+    screen_13_window::{FrameContext, WindowBuilder},
     std::{mem::size_of, sync::Arc},
 };
 
@@ -22,7 +23,8 @@ fn main() -> anyhow::Result<()> {
     // NOTE: This example uses the 64-bit rules defined in the Vulkan spec, they're not obvious:
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#fxvertex-attrib
 
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
 
     let f16_pipeline = create_f16_pipeline(&window.device).ok();
     let f16_vertex_buf = {
@@ -256,4 +258,11 @@ fn supports_vertex_buffer(device: &Device, format: vk::Format) -> bool {
     Device::format_properties(device, format)
         .buffer_features
         .contains(vk::FormatFeatureFlags::VERTEX_BUFFER)
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

@@ -16,9 +16,8 @@ fn main() -> Result<(), DriverError> {
     profile_with_puffin::init();
 
     let args = Args::parse();
-    let device = Arc::new(Device::create_headless(
-        DeviceInfoBuilder::default().debug(args.debug),
-    )?);
+    let device_info = DeviceInfoBuilder::default().debug(args.debug);
+    let device = Arc::new(Device::create_headless(device_info)?);
 
     let mut render_graph = RenderGraph::new();
 
@@ -161,7 +160,7 @@ fn main() -> Result<(), DriverError> {
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
-    /// Enable Vulkan SDK validation layers.
+    /// Enable Vulkan SDK validation layers
     #[arg(long)]
     debug: bool,
 }

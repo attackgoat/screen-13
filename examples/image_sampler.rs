@@ -5,7 +5,7 @@ use {
     hassle_rs::compile_hlsl,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::{
         path::{Path, PathBuf},
         sync::Arc,
@@ -30,7 +30,8 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let gulf_image = read_image(&window.device, "examples/res/image/gulf.jpg")?;
 
     // Sampler info contains the full definition of Vulkan sampler settings using a builder struct
@@ -257,11 +258,15 @@ fn read_image(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Ar
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Use HLSL fragment shaders instead of the default (GLSL).
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
+
+    /// Use HLSL fragment shaders instead of the default (GLSL)
     #[arg(long)]
     hlsl: bool,
 
-    /// Use separate image sampler objects instead of the default (combined image sampler objects).
+    /// Use separate image sampler objects instead of the default (combined image sampler objects)
     #[arg(long)]
     separate: bool,
 }

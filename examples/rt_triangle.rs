@@ -2,9 +2,10 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{cast_slice, NoUninit},
+    clap::Parser,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::sync::Arc,
 };
 
@@ -97,7 +98,8 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let mut pool = HashPool::new(&window.device);
 
     // ------------------------------------------------------------------------------------------ //
@@ -420,4 +422,11 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     Ok(())
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

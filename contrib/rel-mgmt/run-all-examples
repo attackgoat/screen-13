@@ -20,33 +20,38 @@ cargo build --examples
 cargo run --example fuzzer
 
 # Run all regular examples, in debug mode, next
-cargo run --manifest-path contrib/screen-13-window/Cargo.toml --example hello_world
-cargo run --example aliasing
-cargo run --example cpu_readback
-cargo run --example subgroup_ops
-cargo run --example bindless
-cargo run --example image_sampler
-cargo run --example image_sampler -- --hlsl
-cargo run --example image_sampler -- --separate
-cargo run --example image_sampler -- --hlsl --separate
-cargo run --example vertex_layout
-cargo run --example font_bmp
-cargo run --example egui
-cargo run --example imgui
-cargo run --example multithread
-cargo run --example multipass
-cargo run --example msaa
-cargo run --example triangle
-cargo run --example rt_triangle
-cargo run --example ray_trace
-cargo run --example transitions
-cargo run --example vsm_omni
-cargo run --example ray_omni
-cargo run --manifest-path examples/skeletal-anim/Cargo.toml
+cargo run --manifest-path contrib/screen-13-window/Cargo.toml --example hello_world -- --debug
+cargo run --example app -- --debug
+cargo run --example aliasing -- --debug
+cargo run --example cpu_readback -- --debug
+cargo run --example subgroup_ops -- --debug
+cargo run --example bindless -- --debug
+cargo run --example image_sampler -- --debug
+cargo run --example image_sampler -- --debug --hlsl
+cargo run --example image_sampler -- --debug --separate
+cargo run --example image_sampler -- --debug --hlsl --separate
+cargo run --example vertex_layout -- --debug
+cargo run --example font_bmp -- --debug
+cargo run --example egui -- --debug
+cargo run --example imgui -- --debug
+cargo run --example min_max -- --debug
+cargo run --example mip_compute -- --debug
+cargo run --example mip_graphic -- --debug
+cargo run --example multithread -- --debug
+cargo run --example multipass -- --debug
+cargo run --example msaa -- --debug
+cargo run --example triangle -- --debug
+cargo run --example rt_triangle -- --debug
+cargo run --example ray_trace -- --debug
+cargo run --example transitions -- --debug
+cargo run --example vsm_omni -- --debug
+cargo run --example vsm_omni -- --debug --geometry-shader
+cargo run --example ray_omni -- --debug
+cargo run --manifest-path examples/skeletal-anim/Cargo.toml -- --debug
 
 # Hot-reload examples
-cargo run --manifest-path contrib/screen-13-hot/Cargo.toml --example glsl
-cargo run --manifest-path contrib/screen-13-hot/Cargo.toml --example hlsl
+cargo run --manifest-path contrib/screen-13-hot/Cargo.toml --example glsl -- --debug
+cargo run --manifest-path contrib/screen-13-hot/Cargo.toml --example hlsl -- --debug
 
 # Run this one in release mode
-cargo run --manifest-path examples/shader-toy/Cargo.toml --release
+cargo run --manifest-path examples/shader-toy/Cargo.toml --release -- --debug

@@ -2,10 +2,11 @@ mod profile_with_puffin;
 
 use {
     bytemuck::cast_slice,
+    clap::Parser,
     inline_spirv::inline_spirv,
     log::warn,
     screen_13::prelude::*,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::{io::BufReader, mem::size_of, sync::Arc},
     tobj::{load_mtl_buf, load_obj_buf, GPU_LOAD_OPTIONS},
     winit::{event::Event, keyboard::KeyCode},
@@ -486,7 +487,8 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let mut cache = HashPool::new(&window.device);
 
     // ------------------------------------------------------------------------------------------ //
@@ -884,4 +886,11 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     Ok(())
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

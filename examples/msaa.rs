@@ -2,11 +2,12 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit},
+    clap::Parser,
     glam::{Mat4, Vec3},
     inline_spirv::inline_spirv,
     log::warn,
     screen_13::prelude::*,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::{mem::size_of, sync::Arc},
     winit::{event::Event, keyboard::KeyCode},
     winit_input_helper::WinitInputHelper,
@@ -25,7 +26,8 @@ fn main() -> anyhow::Result<()> {
     profile_with_puffin::init();
 
     let mut input = WinitInputHelper::default();
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let depth_format = best_depth_format(&window.device);
     let sample_count = max_supported_sample_count(&window.device);
     let mesh_msaa_pipeline = create_mesh_pipeline(&window.device, sample_count)?;
@@ -380,6 +382,13 @@ fn create_mesh_pipeline(
             Shader::new_fragment(frag.as_slice()),
         ],
     )?))
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }
 
 struct Model {

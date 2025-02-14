@@ -2,9 +2,10 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{cast_slice, Pod, Zeroable},
+    clap::Parser,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
-    screen_13_window::{Window, WindowError},
+    screen_13_window::{WindowBuilder, WindowError},
     std::sync::Arc,
     winit::dpi::LogicalSize,
 };
@@ -13,7 +14,9 @@ fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::builder()
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
         .window(|window| window.with_inner_size(LogicalSize::new(512, 512)))
         .build()?;
     let images = create_images(&window.device)?;
@@ -149,6 +152,13 @@ fn create_graphic_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>,
             ),
         ],
     )?))
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }
 
 #[repr(C)]

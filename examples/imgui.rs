@@ -1,10 +1,11 @@
 mod profile_with_puffin;
 
 use {
+    clap::Parser,
     screen_13::prelude::*,
     screen_13_fx::*,
     screen_13_imgui::{Condition, ImGui},
-    screen_13_window::{Window, WindowError},
+    screen_13_window::{WindowBuilder, WindowError},
     winit::dpi::LogicalSize,
 };
 
@@ -13,7 +14,9 @@ fn main() -> Result<(), WindowError> {
     profile_with_puffin::init();
 
     // Screen 13 things we need for this demo
-    let window = Window::builder()
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
         .v_sync(false)
         .window(|window| window.with_inner_size(LogicalSize::new(1024, 768)))
         .build()?;
@@ -79,4 +82,11 @@ fn main() -> Result<(), WindowError> {
             frame.swapchain_image,
         );
     })
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }
