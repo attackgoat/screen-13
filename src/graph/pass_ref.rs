@@ -3445,18 +3445,24 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             } in accesses
             {
                 let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
 
-                if *access == AccessType::ColorAttachmentRead
-                    && image_subresource_range_intersects(access_image_range, image_range)
-                {
-                    image_access = AccessType::ColorAttachmentReadWrite;
-                    *access = AccessType::ColorAttachmentReadWrite;
-
-                    // If the load access is a subset of the existing access range there is no need
-                    // to push a new access
-                    if image_subresource_range_contains(access_image_range, image_range) {
-                        return self;
+                image_access = match *access {
+                    AccessType::ColorAttachmentRead | AccessType::ColorAttachmentReadWrite => {
+                        AccessType::ColorAttachmentReadWrite
                     }
+                    AccessType::ColorAttachmentWrite => AccessType::ColorAttachmentWrite,
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the clear access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
                 }
             }
         }
@@ -3563,11 +3569,94 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "depth/stencil attachment clear incompatible with existing store"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::DepthStencilAttachmentWrite,
-            Subresource::Image(image_view_info.into()),
-        );
+        let mut image_access = if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+        {
+            AccessType::DepthStencilAttachmentWrite
+        } else if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH)
+        {
+            AccessType::DepthAttachmentWriteStencilReadOnly
+        } else {
+            debug_assert!(image_view_info
+                .aspect_mask
+                .contains(vk::ImageAspectFlags::STENCIL));
+
+            AccessType::StencilAttachmentWriteDepthReadOnly
+        };
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::DepthAttachmentWriteStencilReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::STENCIL)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::DepthAttachmentWriteStencilReadOnly
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentRead => {
+                        if !image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        } else {
+                            AccessType::DepthAttachmentWriteStencilReadOnly
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentWrite => {
+                        AccessType::DepthStencilAttachmentWrite
+                    }
+                    AccessType::StencilAttachmentWriteDepthReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        }
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the clear access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
@@ -3704,18 +3793,24 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             } in accesses
             {
                 let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
 
-                if *access == AccessType::ColorAttachmentWrite
-                    && image_subresource_range_intersects(access_image_range, image_range)
-                {
-                    image_access = AccessType::ColorAttachmentReadWrite;
-                    *access = AccessType::ColorAttachmentReadWrite;
-
-                    // If the load access is a subset of the existing access range there is no need
-                    // to push a new access
-                    if image_subresource_range_contains(access_image_range, image_range) {
-                        return self;
+                image_access = match *access {
+                    AccessType::ColorAttachmentRead => AccessType::ColorAttachmentRead,
+                    AccessType::ColorAttachmentReadWrite | AccessType::ColorAttachmentWrite => {
+                        AccessType::ColorAttachmentReadWrite
                     }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the load access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
                 }
             }
         }
@@ -3797,11 +3892,57 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "depth/stencil attachment load incompatible with existing store"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::DepthStencilAttachmentRead,
-            Subresource::Image(image_view_info.into()),
-        );
+        let mut image_access = AccessType::DepthStencilAttachmentRead;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing write access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::DepthAttachmentWriteStencilReadOnly => {
+                        AccessType::DepthAttachmentWriteStencilReadOnly
+                    }
+                    AccessType::DepthStencilAttachmentRead => {
+                        AccessType::DepthStencilAttachmentRead
+                    }
+                    AccessType::DepthStencilAttachmentWrite => {
+                        AccessType::DepthStencilAttachmentReadWrite
+                    }
+                    AccessType::StencilAttachmentWriteDepthReadOnly => {
+                        AccessType::StencilAttachmentWriteDepthReadOnly
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the load access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
@@ -3950,11 +4091,49 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "color attachment {dst_attachment_idx} resolve incompatible with existing load"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::ColorAttachmentWrite,
-            Subresource::Image(image_view_info.into()),
-        );
+        let mut image_access = AccessType::ColorAttachmentWrite;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::ColorAttachmentRead | AccessType::ColorAttachmentReadWrite => {
+                        AccessType::ColorAttachmentReadWrite
+                    }
+                    AccessType::ColorAttachmentWrite => AccessType::ColorAttachmentWrite,
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the resolve access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
@@ -4008,23 +4187,94 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             stencil_mode,
         ));
 
-        self.pass.push_node_access(
-            image,
-            if image_view_info
+        let mut image_access = if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+        {
+            AccessType::DepthStencilAttachmentWrite
+        } else if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH)
+        {
+            AccessType::DepthAttachmentWriteStencilReadOnly
+        } else {
+            debug_assert!(image_view_info
                 .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                .contains(vk::ImageAspectFlags::STENCIL));
+
+            AccessType::StencilAttachmentWriteDepthReadOnly
+        };
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
             {
-                AccessType::DepthStencilAttachmentWrite
-            } else if image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH)
-            {
-                AccessType::DepthAttachmentWriteStencilReadOnly
-            } else {
-                AccessType::StencilAttachmentWriteDepthReadOnly
-            },
-            Subresource::Image(image_view_info.into()),
-        );
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::DepthAttachmentWriteStencilReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::STENCIL)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::DepthAttachmentWriteStencilReadOnly
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentRead => {
+                        if !image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        } else {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentWrite => {
+                        AccessType::DepthStencilAttachmentWrite
+                    }
+                    AccessType::StencilAttachmentWriteDepthReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        }
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the resolve access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
@@ -4195,22 +4445,23 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             } in accesses
             {
                 let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
 
-                if *access == AccessType::ColorAttachmentRead
-                    && image_subresource_range_intersects(access_image_range, image_range)
-                {
-                    image_access = AccessType::ColorAttachmentReadWrite;
-                    *access = AccessType::ColorAttachmentReadWrite;
-
-                    // If the load access is a subset of the existing access range there is no need
-                    // to push a new access
-                    if image_subresource_range_contains(access_image_range, image_range) {
-                        return self;
+                image_access = match *access {
+                    AccessType::ColorAttachmentRead | AccessType::ColorAttachmentReadWrite => {
+                        AccessType::ColorAttachmentReadWrite
                     }
-                } else if *access == image_access
-                    && image_subresource_range_contains(access_image_range, image_range)
-                {
-                    // Duplicate access generated by clear op
+                    AccessType::ColorAttachmentWrite => AccessType::ColorAttachmentWrite,
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the store access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
                     return self;
                 }
             }
@@ -4286,23 +4537,94 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "depth/stencil attachment store incompatible with existing load"
         );
 
-        self.pass.push_node_access(
-            image,
-            if image_view_info
+        let mut image_access = if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+        {
+            AccessType::DepthStencilAttachmentWrite
+        } else if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH)
+        {
+            AccessType::DepthAttachmentWriteStencilReadOnly
+        } else {
+            debug_assert!(image_view_info
                 .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                .contains(vk::ImageAspectFlags::STENCIL));
+
+            AccessType::StencilAttachmentWriteDepthReadOnly
+        };
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
             {
-                AccessType::DepthStencilAttachmentWrite
-            } else if image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH)
-            {
-                AccessType::DepthAttachmentWriteStencilReadOnly
-            } else {
-                AccessType::StencilAttachmentWriteDepthReadOnly
-            },
-            Subresource::Image(image_view_info.into()),
-        );
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::DepthAttachmentWriteStencilReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::STENCIL)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::DepthAttachmentWriteStencilReadOnly
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentRead => {
+                        if !image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        } else {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentWrite => {
+                        AccessType::DepthStencilAttachmentWrite
+                    }
+                    AccessType::StencilAttachmentWriteDepthReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        }
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the store access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
