@@ -325,6 +325,7 @@ pub(super) const fn is_write_access(ty: AccessType) -> bool {
         | FragmentShaderWrite
         | ColorAttachmentWrite
         | DepthStencilAttachmentWrite
+        | DepthStencilAttachmentReadWrite
         | DepthAttachmentWriteStencilReadOnly
         | StencilAttachmentWriteDepthReadOnly
         | ComputeShaderWrite
@@ -549,6 +550,16 @@ pub(super) const fn pipeline_stage_access_flags(
                     | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS.as_raw(),
             ),
             access::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        ),
+        ty::DepthStencilAttachmentReadWrite => (
+            stage::from_raw(
+                stage::EARLY_FRAGMENT_TESTS.as_raw()
+                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS.as_raw(),
+            ),
+            access::from_raw(
+                access::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw()
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ.as_raw(),
+            ),
         ),
         ty::DepthAttachmentWriteStencilReadOnly => (
             stage::from_raw(

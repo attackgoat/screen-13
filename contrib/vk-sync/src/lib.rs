@@ -146,6 +146,9 @@ pub enum AccessType {
     /// Written as a depth/stencil attachment during rendering, or via a subpass store op
     DepthStencilAttachmentWrite,
 
+    /// Read or written as a depth/stencil attachment during rendering, or via a subpass store op
+    DepthStencilAttachmentReadWrite,
+
     /// Written as a depth aspect of a depth/stencil attachment during rendering, whilst the
     /// stencil aspect is read-only. Requires `VK_KHR_maintenance2` to be enabled.
     DepthAttachmentWriteStencilReadOnly,
@@ -638,6 +641,13 @@ pub(crate) fn get_access_info(access_type: AccessType) -> AccessInfo {
             access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
             image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
         },
+        AccessType::DepthStencilAttachmentReadWrite => AccessInfo {
+            stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+            access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            image_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        },
         AccessType::ComputeShaderReadUniformBuffer => AccessInfo {
             stage_mask: vk::PipelineStageFlags::COMPUTE_SHADER,
             access_mask: vk::AccessFlags::UNIFORM_READ,
@@ -841,6 +851,8 @@ pub(crate) fn is_write_access(access_type: AccessType) -> bool {
         AccessType::HostWrite => true,
         AccessType::ColorAttachmentReadWrite => true,
         AccessType::General => true,
+        AccessType::AccelerationStructureBuildWrite => true,
+        AccessType::AccelerationStructureBufferWrite => true,
         _ => false,
     }
 }
