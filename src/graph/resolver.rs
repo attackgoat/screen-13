@@ -2212,26 +2212,12 @@ impl Resolver {
                 Self::write_descriptor_sets(cmd_buf, &self.graph.bindings, pass, physical_pass)?;
             }
 
-            if is_graphic && pass.execs.len() > 1 {
-                let mut accesses = HashMap::<usize, Vec<SubresourceAccess>>::new();
-                for exec_idx in 0..pass.execs.len() {
-                    for (node_idx, exec_accesses) in pass.execs[exec_idx].accesses.iter() {
-                        accesses
-                            .entry(*node_idx)
-                            .and_modify(|accesses| accesses.extend(exec_accesses))
-                            .or_insert(exec_accesses.clone());
-                    }
-                }
-
-                Self::record_execution_barriers("  ", cmd_buf, &mut self.graph.bindings, &accesses);
-            } else {
-                Self::record_execution_barriers(
-                    "  ",
-                    cmd_buf,
-                    &mut self.graph.bindings,
-                    &pass.execs[0].accesses,
-                );
-            }
+            Self::record_execution_barriers(
+                "  ",
+                cmd_buf,
+                &mut self.graph.bindings,
+                &pass.execs[0].accesses,
+            );
 
             let render_area = if is_graphic {
                 let render_area = Self::render_area(&self.graph.bindings, pass);
