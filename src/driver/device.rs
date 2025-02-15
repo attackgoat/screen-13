@@ -287,6 +287,15 @@ impl Device {
             .expect("VK_KHR_acceleration_structure")
     }
 
+    /// Helper for times when you already know that the device supports the swapchain extension.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the device was not created for swapchain access.
+    pub(crate) fn expect_swapchain_ext(this: &Self) -> &khr::swapchain::Device {
+        this.swapchain_ext.as_ref().expect("VK_KHR_swapchain")
+    }
+
     /// Loads and existing `ash` Vulkan device that may have been created by other means.
     #[profiling::function]
     pub fn load(

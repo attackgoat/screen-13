@@ -347,6 +347,12 @@ impl Window {
 
         self.event_loop.run_app(&mut app)?;
 
+        if let Some(ActiveWindow { display, swapchain, window, .. }) = app.active_window.take() {
+            drop(display);
+            drop(swapchain);
+            drop(window);
+        }
+
         info!("Window closed");
 
         if let Some(err) = app.error {

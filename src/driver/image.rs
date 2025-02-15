@@ -287,7 +287,7 @@ impl Image {
     }
 
     #[profiling::function]
-    pub(super) fn clone_raw(this: &Self) -> Self {
+    pub(super) fn clone_swapchain(this: &Self) -> Self {
         // Moves the image view cache from the current instance to the clone!
         #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
         let mut image_view_cache = this.image_view_cache.lock();
@@ -297,15 +297,9 @@ impl Image {
 
         let image_view_cache = take(&mut *image_view_cache);
 
-        // Moves the image accesses from the current instance to the clone!
-        #[cfg_attr(not(feature = "parking_lot"), allow(unused_mut))]
-        let mut accesses = this.accesses.lock();
-
-        #[cfg(not(feature = "parking_lot"))]
-        let mut accesses = accesses.unwrap();
-
+        // Does NOT copy over the image accesses!
         let Self { image, info, .. } = *this;
-        let accesses = Mutex::new(replace(&mut *accesses, ImageAccess::new(info)));
+        let accesses = Mutex::new(ImageAccess::new(info));
 
         Self {
             accesses,

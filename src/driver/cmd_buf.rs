@@ -11,6 +11,7 @@ pub struct CommandBuffer {
     cmd_buf: vk::CommandBuffer,
     pub(crate) device: Arc<Device>,
     droppables: Vec<Box<dyn Debug + Send + 'static>>,
+    droppable_semaphores: Vec<vk::Semaphore>,
     pub(crate) fence: vk::Fence, // Keeps state because everyone wants this
 
     /// Information used to create this object.
@@ -60,6 +61,7 @@ impl CommandBuffer {
             cmd_buf,
             device,
             droppables: vec![],
+            droppable_semaphores: vec![],
             fence,
             info,
             pool,
@@ -74,6 +76,12 @@ impl CommandBuffer {
         }
 
         this.droppables.clear();
+
+        for semaphore in this.droppable_semaphores.drain(..) {
+            unsafe {
+                this.device.destroy_semaphore(semaphore, None);
+            }
+        }
     }
 
     /// Returns `true` after the GPU has executed the previous submission to this command buffer.
@@ -103,6 +111,10 @@ impl CommandBuffer {
     /// Drops an item after execution has been completed
     pub(crate) fn push_fenced_drop(this: &mut Self, thing_to_drop: impl Debug + Send + 'static) {
         this.droppables.push(Box::new(thing_to_drop));
+    }
+
+    pub(crate) fn push_fenced_semaphore(this: &mut Self, semaphore: vk::Semaphore) {
+        this.droppable_semaphores.push(semaphore);
     }
 
     /// Stalls by blocking the current thread until the GPU has executed the previous submission to
@@ -136,6 +148,8 @@ impl Drop for CommandBuffer {
             if Device::wait_for_fence(&self.device, &self.fence).is_err() {
                 return;
             }
+
+            Self::drop_fenced(self);
 
             self.device
                 .free_command_buffers(self.pool, from_ref(&self.cmd_buf));

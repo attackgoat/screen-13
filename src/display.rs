@@ -180,6 +180,10 @@ impl Display {
         // that need to be kept alive until the fence is waited upon.
         CommandBuffer::push_fenced_drop(cmd_buf, resolver);
 
+        // HACK: Until swapchain gets a better design to track completed command buffers
+        CommandBuffer::push_fenced_semaphore(cmd_buf, swapchain_image.acquired);
+        swapchain_image.acquired = vk::Semaphore::null();
+
         Ok(swapchain_image)
     }
 
