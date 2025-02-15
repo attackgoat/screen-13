@@ -74,7 +74,7 @@ pub struct HotShader {
     /// # use screen_13::driver::shader::{SpecializationInfo};
     /// # use screen_13_hot::shader::HotShader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_shader_code = [0u8; 1];
     /// // We instead specify 42 for MY_COUNT:
     /// let shader = HotShader::new_fragment(my_shader_code.as_slice())

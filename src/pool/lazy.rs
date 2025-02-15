@@ -17,7 +17,7 @@ use {
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 struct ImageKey {
-    array_elements: u32,
+    array_layer_count: u32,
     depth: u32,
     fmt: vk::Format,
     height: u32,
@@ -31,7 +31,7 @@ struct ImageKey {
 impl From<ImageInfo> for ImageKey {
     fn from(info: ImageInfo) -> Self {
         Self {
-            array_elements: info.array_elements,
+            array_layer_count: info.array_layer_count,
             depth: info.depth,
             fmt: info.fmt,
             height: info.height,

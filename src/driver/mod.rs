@@ -77,199 +77,188 @@ use {
         cmp::Ordering,
         error::Error,
         fmt::{Display, Formatter},
-        ops::Range,
     },
     vk_sync::ImageLayout,
 };
 
-const fn access_type_from_u8(access: u8) -> AccessType {
-    match access {
-        0 => AccessType::Nothing,
-        1 => AccessType::CommandBufferReadNVX,
-        2 => AccessType::IndirectBuffer,
-        3 => AccessType::IndexBuffer,
-        4 => AccessType::VertexBuffer,
-        5 => AccessType::VertexShaderReadUniformBuffer,
-        6 => AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer,
-        7 => AccessType::VertexShaderReadOther,
-        8 => AccessType::TessellationControlShaderReadUniformBuffer,
-        9 => AccessType::TessellationControlShaderReadSampledImageOrUniformTexelBuffer,
-        10 => AccessType::TessellationControlShaderReadOther,
-        11 => AccessType::TessellationEvaluationShaderReadUniformBuffer,
-        12 => AccessType::TessellationEvaluationShaderReadSampledImageOrUniformTexelBuffer,
-        13 => AccessType::TessellationEvaluationShaderReadOther,
-        14 => AccessType::GeometryShaderReadUniformBuffer,
-        15 => AccessType::GeometryShaderReadSampledImageOrUniformTexelBuffer,
-        16 => AccessType::GeometryShaderReadOther,
-        17 => AccessType::FragmentShaderReadUniformBuffer,
-        18 => AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer,
-        19 => AccessType::FragmentShaderReadColorInputAttachment,
-        20 => AccessType::FragmentShaderReadDepthStencilInputAttachment,
-        21 => AccessType::FragmentShaderReadOther,
-        22 => AccessType::ColorAttachmentRead,
-        23 => AccessType::DepthStencilAttachmentRead,
-        24 => AccessType::ComputeShaderReadUniformBuffer,
-        25 => AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        26 => AccessType::ComputeShaderReadOther,
-        27 => AccessType::AnyShaderReadUniformBuffer,
-        28 => AccessType::AnyShaderReadUniformBufferOrVertexBuffer,
-        29 => AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        30 => AccessType::AnyShaderReadOther,
-        31 => AccessType::TransferRead,
-        32 => AccessType::HostRead,
-        33 => AccessType::Present,
-        34 => AccessType::CommandBufferWriteNVX,
-        35 => AccessType::VertexShaderWrite,
-        36 => AccessType::TessellationControlShaderWrite,
-        37 => AccessType::TessellationEvaluationShaderWrite,
-        38 => AccessType::GeometryShaderWrite,
-        39 => AccessType::FragmentShaderWrite,
-        40 => AccessType::ColorAttachmentWrite,
-        41 => AccessType::DepthStencilAttachmentWrite,
-        42 => AccessType::DepthAttachmentWriteStencilReadOnly,
-        43 => AccessType::StencilAttachmentWriteDepthReadOnly,
-        44 => AccessType::ComputeShaderWrite,
-        45 => AccessType::AnyShaderWrite,
-        46 => AccessType::TransferWrite,
-        47 => AccessType::HostWrite,
-        48 => AccessType::ColorAttachmentReadWrite,
-        49 => AccessType::General,
-        50 => AccessType::RayTracingShaderReadSampledImageOrUniformTexelBuffer,
-        51 => AccessType::RayTracingShaderReadColorInputAttachment,
-        52 => AccessType::RayTracingShaderReadDepthStencilInputAttachment,
-        53 => AccessType::RayTracingShaderReadAccelerationStructure,
-        54 => AccessType::RayTracingShaderReadOther,
-        55 => AccessType::AccelerationStructureBuildWrite,
-        56 => AccessType::AccelerationStructureBuildRead,
-        57 => AccessType::AccelerationStructureBufferWrite,
-        _ => unimplemented!(),
-    }
-}
-
-const fn access_type_into_u8(access: AccessType) -> u8 {
-    match access {
-        AccessType::Nothing => 0,
-        AccessType::CommandBufferReadNVX => 1,
-        AccessType::IndirectBuffer => 2,
-        AccessType::IndexBuffer => 3,
-        AccessType::VertexBuffer => 4,
-        AccessType::VertexShaderReadUniformBuffer => 5,
-        AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer => 6,
-        AccessType::VertexShaderReadOther => 7,
-        AccessType::TessellationControlShaderReadUniformBuffer => 8,
-        AccessType::TessellationControlShaderReadSampledImageOrUniformTexelBuffer => 9,
-        AccessType::TessellationControlShaderReadOther => 10,
-        AccessType::TessellationEvaluationShaderReadUniformBuffer => 11,
-        AccessType::TessellationEvaluationShaderReadSampledImageOrUniformTexelBuffer => 12,
-        AccessType::TessellationEvaluationShaderReadOther => 13,
-        AccessType::GeometryShaderReadUniformBuffer => 14,
-        AccessType::GeometryShaderReadSampledImageOrUniformTexelBuffer => 15,
-        AccessType::GeometryShaderReadOther => 16,
-        AccessType::FragmentShaderReadUniformBuffer => 17,
-        AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer => 18,
-        AccessType::FragmentShaderReadColorInputAttachment => 19,
-        AccessType::FragmentShaderReadDepthStencilInputAttachment => 20,
-        AccessType::FragmentShaderReadOther => 21,
-        AccessType::ColorAttachmentRead => 22,
-        AccessType::DepthStencilAttachmentRead => 23,
-        AccessType::ComputeShaderReadUniformBuffer => 24,
-        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer => 25,
-        AccessType::ComputeShaderReadOther => 26,
-        AccessType::AnyShaderReadUniformBuffer => 27,
-        AccessType::AnyShaderReadUniformBufferOrVertexBuffer => 28,
-        AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer => 29,
-        AccessType::AnyShaderReadOther => 30,
-        AccessType::TransferRead => 31,
-        AccessType::HostRead => 32,
-        AccessType::Present => 33,
-        AccessType::CommandBufferWriteNVX => 34,
-        AccessType::VertexShaderWrite => 35,
-        AccessType::TessellationControlShaderWrite => 36,
-        AccessType::TessellationEvaluationShaderWrite => 37,
-        AccessType::GeometryShaderWrite => 38,
-        AccessType::FragmentShaderWrite => 39,
-        AccessType::ColorAttachmentWrite => 40,
-        AccessType::DepthStencilAttachmentWrite => 41,
-        AccessType::DepthAttachmentWriteStencilReadOnly => 42,
-        AccessType::StencilAttachmentWriteDepthReadOnly => 43,
-        AccessType::ComputeShaderWrite => 44,
-        AccessType::AnyShaderWrite => 45,
-        AccessType::TransferWrite => 46,
-        AccessType::HostWrite => 47,
-        AccessType::ColorAttachmentReadWrite => 48,
-        AccessType::General => 49,
-        AccessType::RayTracingShaderReadSampledImageOrUniformTexelBuffer => 50,
-        AccessType::RayTracingShaderReadColorInputAttachment => 51,
-        AccessType::RayTracingShaderReadDepthStencilInputAttachment => 52,
-        AccessType::RayTracingShaderReadAccelerationStructure => 53,
-        AccessType::RayTracingShaderReadOther => 54,
-        AccessType::AccelerationStructureBuildWrite => 55,
-        AccessType::AccelerationStructureBuildRead => 56,
-        AccessType::AccelerationStructureBufferWrite => 57,
-    }
-}
-
-#[allow(clippy::reversed_empty_ranges)]
-#[profiling::function]
-pub(super) fn buffer_copy_subresources(
-    regions: &[vk::BufferCopy],
-) -> (Range<vk::DeviceSize>, Range<vk::DeviceSize>) {
-    let mut src = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
-    let mut dst = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
-    for region in regions.iter() {
-        src.start = src.start.min(region.src_offset);
-        src.end = src.end.max(region.src_offset + region.size);
-
-        dst.start = dst.start.min(region.dst_offset);
-        dst.end = dst.end.max(region.dst_offset + region.size);
-    }
-
-    debug_assert!(src.end > src.start);
-    debug_assert!(dst.end > dst.start);
-
-    (src, dst)
-}
-
-#[allow(clippy::reversed_empty_ranges)]
-#[profiling::function]
-pub(super) fn buffer_image_copy_subresource(
-    regions: &[vk::BufferImageCopy],
-) -> Range<vk::DeviceSize> {
-    debug_assert!(!regions.is_empty());
-
-    let mut res = vk::DeviceSize::MAX..vk::DeviceSize::MIN;
-    for region in regions.iter() {
-        debug_assert_ne!(0, region.buffer_row_length);
-        debug_assert_ne!(0, region.buffer_image_height);
-
-        res.start = res.start.min(region.buffer_offset);
-        res.end = res.end.max(
-            region.buffer_offset
-                + (region.buffer_row_length * region.buffer_image_height) as vk::DeviceSize,
-        );
-    }
-
-    debug_assert!(res.end > res.start);
-
-    res
-}
-
 pub(super) const fn format_aspect_mask(fmt: vk::Format) -> vk::ImageAspectFlags {
     match fmt {
-        vk::Format::D16_UNORM => vk::ImageAspectFlags::DEPTH,
-        vk::Format::X8_D24_UNORM_PACK32 => vk::ImageAspectFlags::DEPTH,
-        vk::Format::D32_SFLOAT => vk::ImageAspectFlags::DEPTH,
+        vk::Format::D16_UNORM | vk::Format::D32_SFLOAT | vk::Format::X8_D24_UNORM_PACK32 => {
+            vk::ImageAspectFlags::DEPTH
+        }
         vk::Format::S8_UINT => vk::ImageAspectFlags::STENCIL,
-        vk::Format::D16_UNORM_S8_UINT => vk::ImageAspectFlags::from_raw(
-            vk::ImageAspectFlags::DEPTH.as_raw() | vk::ImageAspectFlags::STENCIL.as_raw(),
-        ),
-        vk::Format::D24_UNORM_S8_UINT => vk::ImageAspectFlags::from_raw(
-            vk::ImageAspectFlags::DEPTH.as_raw() | vk::ImageAspectFlags::STENCIL.as_raw(),
-        ),
-        vk::Format::D32_SFLOAT_S8_UINT => vk::ImageAspectFlags::from_raw(
+        vk::Format::D16_UNORM_S8_UINT
+        | vk::Format::D24_UNORM_S8_UINT
+        | vk::Format::D32_SFLOAT_S8_UINT => vk::ImageAspectFlags::from_raw(
             vk::ImageAspectFlags::DEPTH.as_raw() | vk::ImageAspectFlags::STENCIL.as_raw(),
         ),
         _ => vk::ImageAspectFlags::COLOR,
+    }
+}
+
+/// See [Representation and Texel Block Size](https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#texel-block-size)
+pub const fn format_texel_block_size(fmt: vk::Format) -> u32 {
+    match fmt {
+        vk::Format::R4G4_UNORM_PACK8
+        | vk::Format::R8_UNORM
+        | vk::Format::R8_SNORM
+        | vk::Format::R8_USCALED
+        | vk::Format::R8_SSCALED
+        | vk::Format::R8_UINT
+        | vk::Format::R8_SINT
+        | vk::Format::R8_SRGB => 1,
+        vk::Format::A1B5G5R5_UNORM_PACK16_KHR
+        | vk::Format::R10X6_UNORM_PACK16
+        | vk::Format::R12X4_UNORM_PACK16
+        | vk::Format::A4R4G4B4_UNORM_PACK16
+        | vk::Format::A4B4G4R4_UNORM_PACK16
+        | vk::Format::R4G4B4A4_UNORM_PACK16
+        | vk::Format::B4G4R4A4_UNORM_PACK16
+        | vk::Format::R5G6B5_UNORM_PACK16
+        | vk::Format::B5G6R5_UNORM_PACK16
+        | vk::Format::R5G5B5A1_UNORM_PACK16
+        | vk::Format::B5G5R5A1_UNORM_PACK16
+        | vk::Format::A1R5G5B5_UNORM_PACK16
+        | vk::Format::R8G8_UNORM
+        | vk::Format::R8G8_SNORM
+        | vk::Format::R8G8_USCALED
+        | vk::Format::R8G8_SSCALED
+        | vk::Format::R8G8_UINT
+        | vk::Format::R8G8_SINT
+        | vk::Format::R8G8_SRGB
+        | vk::Format::R16_UNORM
+        | vk::Format::R16_SNORM
+        | vk::Format::R16_USCALED
+        | vk::Format::R16_SSCALED
+        | vk::Format::R16_UINT
+        | vk::Format::R16_SINT
+        | vk::Format::R16_SFLOAT => 2,
+        vk::Format::A8_UNORM_KHR => 1,
+        vk::Format::R8G8B8_UNORM
+        | vk::Format::R8G8B8_SNORM
+        | vk::Format::R8G8B8_USCALED
+        | vk::Format::R8G8B8_SSCALED
+        | vk::Format::R8G8B8_UINT
+        | vk::Format::R8G8B8_SINT
+        | vk::Format::R8G8B8_SRGB
+        | vk::Format::B8G8R8_UNORM
+        | vk::Format::B8G8R8_SNORM
+        | vk::Format::B8G8R8_USCALED
+        | vk::Format::B8G8R8_SSCALED
+        | vk::Format::B8G8R8_UINT
+        | vk::Format::B8G8R8_SINT
+        | vk::Format::B8G8R8_SRGB => 3,
+        vk::Format::R10X6G10X6_UNORM_2PACK16
+        | vk::Format::R12X4G12X4_UNORM_2PACK16
+        | vk::Format::R16G16_S10_5_NV
+        | vk::Format::R8G8B8A8_UNORM
+        | vk::Format::R8G8B8A8_SNORM
+        | vk::Format::R8G8B8A8_USCALED
+        | vk::Format::R8G8B8A8_SSCALED
+        | vk::Format::R8G8B8A8_UINT
+        | vk::Format::R8G8B8A8_SINT
+        | vk::Format::R8G8B8A8_SRGB
+        | vk::Format::B8G8R8A8_UNORM
+        | vk::Format::B8G8R8A8_SNORM
+        | vk::Format::B8G8R8A8_USCALED
+        | vk::Format::B8G8R8A8_SSCALED
+        | vk::Format::B8G8R8A8_UINT
+        | vk::Format::B8G8R8A8_SINT
+        | vk::Format::B8G8R8A8_SRGB
+        | vk::Format::A8B8G8R8_UNORM_PACK32
+        | vk::Format::A8B8G8R8_SNORM_PACK32
+        | vk::Format::A8B8G8R8_USCALED_PACK32
+        | vk::Format::A8B8G8R8_SSCALED_PACK32
+        | vk::Format::A8B8G8R8_UINT_PACK32
+        | vk::Format::A8B8G8R8_SINT_PACK32
+        | vk::Format::A8B8G8R8_SRGB_PACK32
+        | vk::Format::A2R10G10B10_UNORM_PACK32
+        | vk::Format::A2R10G10B10_SNORM_PACK32
+        | vk::Format::A2R10G10B10_USCALED_PACK32
+        | vk::Format::A2R10G10B10_SSCALED_PACK32
+        | vk::Format::A2R10G10B10_UINT_PACK32
+        | vk::Format::A2R10G10B10_SINT_PACK32
+        | vk::Format::A2B10G10R10_UNORM_PACK32
+        | vk::Format::A2B10G10R10_SNORM_PACK32
+        | vk::Format::A2B10G10R10_USCALED_PACK32
+        | vk::Format::A2B10G10R10_SSCALED_PACK32
+        | vk::Format::A2B10G10R10_UINT_PACK32
+        | vk::Format::A2B10G10R10_SINT_PACK32
+        | vk::Format::R16G16_UNORM
+        | vk::Format::R16G16_SNORM
+        | vk::Format::R16G16_USCALED
+        | vk::Format::R16G16_SSCALED
+        | vk::Format::R16G16_UINT
+        | vk::Format::R16G16_SINT
+        | vk::Format::R16G16_SFLOAT
+        | vk::Format::R32_UINT
+        | vk::Format::R32_SINT
+        | vk::Format::R32_SFLOAT
+        | vk::Format::B10G11R11_UFLOAT_PACK32
+        | vk::Format::E5B9G9R9_UFLOAT_PACK32 => 4,
+        vk::Format::R16G16B16_UNORM
+        | vk::Format::R16G16B16_SNORM
+        | vk::Format::R16G16B16_USCALED
+        | vk::Format::R16G16B16_SSCALED
+        | vk::Format::R16G16B16_UINT
+        | vk::Format::R16G16B16_SINT
+        | vk::Format::R16G16B16_SFLOAT => 6,
+        vk::Format::R16G16B16A16_UNORM
+        | vk::Format::R16G16B16A16_SNORM
+        | vk::Format::R16G16B16A16_USCALED
+        | vk::Format::R16G16B16A16_SSCALED
+        | vk::Format::R16G16B16A16_UINT
+        | vk::Format::R16G16B16A16_SINT
+        | vk::Format::R16G16B16A16_SFLOAT
+        | vk::Format::R32G32_UINT
+        | vk::Format::R32G32_SINT
+        | vk::Format::R32G32_SFLOAT
+        | vk::Format::R64_UINT
+        | vk::Format::R64_SINT
+        | vk::Format::R64_SFLOAT => 8,
+        vk::Format::R32G32B32_UINT | vk::Format::R32G32B32_SINT | vk::Format::R32G32B32_SFLOAT => {
+            12
+        }
+        vk::Format::R32G32B32A32_UINT
+        | vk::Format::R32G32B32A32_SINT
+        | vk::Format::R32G32B32A32_SFLOAT
+        | vk::Format::R64G64_UINT
+        | vk::Format::R64G64_SINT
+        | vk::Format::R64G64_SFLOAT => 16,
+        vk::Format::R64G64B64_UINT | vk::Format::R64G64B64_SINT | vk::Format::R64G64B64_SFLOAT => {
+            24
+        }
+        vk::Format::R64G64B64A64_UINT
+        | vk::Format::R64G64B64A64_SINT
+        | vk::Format::R64G64B64A64_SFLOAT => 32,
+        vk::Format::D16_UNORM => 2,
+        vk::Format::X8_D24_UNORM_PACK32 => 4,
+        vk::Format::D32_SFLOAT => 4,
+        vk::Format::S8_UINT => 1,
+        vk::Format::D16_UNORM_S8_UINT => 3,
+        vk::Format::D24_UNORM_S8_UINT => 4,
+        vk::Format::D32_SFLOAT_S8_UINT => 5,
+        _ => {
+            // Remaining formats should be implemented in the future
+            unimplemented!()
+        }
+    }
+}
+
+pub(super) const fn image_subresource_range_from_layers(
+    vk::ImageSubresourceLayers {
+        aspect_mask,
+        mip_level,
+        base_array_layer,
+        layer_count,
+    }: vk::ImageSubresourceLayers,
+) -> vk::ImageSubresourceRange {
+    vk::ImageSubresourceRange {
+        aspect_mask,
+        base_mip_level: mip_level,
+        level_count: 1,
+        base_array_layer,
+        layer_count,
     }
 }
 
@@ -279,21 +268,6 @@ pub(super) const fn image_access_layout(access: AccessType) -> ImageLayout {
     } else {
         ImageLayout::Optimal
     }
-}
-
-pub(super) const fn is_framebuffer_access(ty: AccessType) -> bool {
-    matches!(
-        ty,
-        AccessType::ColorAttachmentRead
-            | AccessType::ColorAttachmentReadWrite
-            | AccessType::ColorAttachmentWrite
-            | AccessType::DepthAttachmentWriteStencilReadOnly
-            | AccessType::DepthStencilAttachmentRead
-            | AccessType::DepthStencilAttachmentWrite
-            | AccessType::FragmentShaderReadColorInputAttachment
-            | AccessType::FragmentShaderReadDepthStencilInputAttachment
-            | AccessType::StencilAttachmentWriteDepthReadOnly
-    )
 }
 
 pub(super) const fn is_read_access(ty: AccessType) -> bool {
@@ -351,6 +325,7 @@ pub(super) const fn is_write_access(ty: AccessType) -> bool {
         | FragmentShaderWrite
         | ColorAttachmentWrite
         | DepthStencilAttachmentWrite
+        | DepthStencilAttachmentReadWrite
         | DepthAttachmentWriteStencilReadOnly
         | StencilAttachmentWriteDepthReadOnly
         | ComputeShaderWrite
@@ -360,7 +335,8 @@ pub(super) const fn is_write_access(ty: AccessType) -> bool {
         | ColorAttachmentReadWrite
         | General
         | AccelerationStructureBuildWrite
-        | AccelerationStructureBufferWrite => true,
+        | AccelerationStructureBufferWrite
+        | ComputeShaderReadWrite => true,
     }
 }
 
@@ -575,6 +551,16 @@ pub(super) const fn pipeline_stage_access_flags(
             ),
             access::DEPTH_STENCIL_ATTACHMENT_WRITE,
         ),
+        ty::DepthStencilAttachmentReadWrite => (
+            stage::from_raw(
+                stage::EARLY_FRAGMENT_TESTS.as_raw()
+                    | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS.as_raw(),
+            ),
+            access::from_raw(
+                access::DEPTH_STENCIL_ATTACHMENT_WRITE.as_raw()
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ.as_raw(),
+            ),
+        ),
         ty::DepthAttachmentWriteStencilReadOnly => (
             stage::from_raw(
                 stage::EARLY_FRAGMENT_TESTS.as_raw()
@@ -596,6 +582,10 @@ pub(super) const fn pipeline_stage_access_flags(
             ),
         ),
         ty::ComputeShaderWrite => (stage::COMPUTE_SHADER, access::SHADER_WRITE),
+        ty::ComputeShaderReadWrite => (
+            stage::COMPUTE_SHADER,
+            access::from_raw(access::SHADER_WRITE.as_raw() | access::SHADER_READ.as_raw()),
+        ),
         ty::AnyShaderWrite => (stage::ALL_COMMANDS, access::SHADER_WRITE),
         ty::TransferWrite => (stage::TRANSFER, access::TRANSFER_WRITE),
         ty::HostWrite => (stage::HOST, access::HOST_WRITE),

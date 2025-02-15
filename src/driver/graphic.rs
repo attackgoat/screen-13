@@ -391,7 +391,7 @@ impl GraphicPipeline {
     /// # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// // shader code is raw SPIR-V code as bytes

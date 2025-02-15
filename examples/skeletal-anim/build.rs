@@ -72,7 +72,7 @@ fn compile_shader(
             "main",
             None,
         )
-        .map_err(|err| {
+        .inspect_err(|_| {
             eprintln!("Shader: {}", source_path.display());
 
             for (idx, line) in source_text.split('\n').enumerate() {
@@ -80,8 +80,6 @@ fn compile_shader(
             }
 
             eprintln!();
-
-            err
         })
         .context("Compiling")?
         .as_binary_u8()

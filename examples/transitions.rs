@@ -1,11 +1,12 @@
 mod profile_with_puffin;
 
 use {
+    clap::Parser,
     image::ImageReader,
     log::info,
     screen_13_fx::*,
     screen_13_imgui::prelude::*,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::{io::Cursor, time::Instant},
     winit::dpi::LogicalSize,
 };
@@ -15,7 +16,9 @@ fn main() -> anyhow::Result<()> {
     profile_with_puffin::init();
 
     // Create Screen 13 things any similar program might need
-    let window = Window::builder()
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
         .window(|builder| builder.with_inner_size(LogicalSize::new(1024.0f64, 768.0f64)))
         .build()?;
     let display = ComputePresenter::new(&window.device)?;
@@ -355,3 +358,10 @@ const TRANSITIONS: [Transition; 80] = [
         zoom_quickness: 0.8,
     },
 ];
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
+}

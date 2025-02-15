@@ -2,9 +2,10 @@ mod profile_with_puffin;
 
 use {
     bytemuck::cast_slice,
+    clap::Parser,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
-    screen_13_window::{Window, WindowError},
+    screen_13_window::{WindowBuilder, WindowError},
     std::sync::Arc,
 };
 
@@ -13,7 +14,8 @@ fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let triangle_pipeline = Arc::new(GraphicPipeline::create(
         &window.device,
         GraphicPipelineInfo::default(),
@@ -94,4 +96,11 @@ fn main() -> Result<(), WindowError> {
                 subpass.draw_indexed(3, 1, 0, 0, 0);
             });
     })
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

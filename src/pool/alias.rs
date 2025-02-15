@@ -181,7 +181,7 @@ where
             profiling::scope!("check aliases");
 
             for (item_info, item) in &self.images {
-                if item_info.array_elements == info.array_elements
+                if item_info.array_layer_count == info.array_layer_count
                     && item_info.depth == info.depth
                     && item_info.fmt == info.fmt
                     && item_info.height == info.height

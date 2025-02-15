@@ -1,15 +1,17 @@
 mod profile_with_puffin;
 
 use {
-    screen_13::prelude::*, screen_13_egui::prelude::*, screen_13_window::Window,
-    winit::dpi::LogicalSize,
+    clap::Parser, screen_13::prelude::*, screen_13_egui::prelude::*,
+    screen_13_window::WindowBuilder, winit::dpi::LogicalSize,
 };
 
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::builder()
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
         .v_sync(false)
         .window(|window| window.with_inner_size(LogicalSize::new(1024, 768)))
         .build()?;
@@ -57,4 +59,11 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     Ok(())
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

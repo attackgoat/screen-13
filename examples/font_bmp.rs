@@ -2,11 +2,12 @@ mod profile_with_puffin;
 
 use {
     bmfont::{BMFont, OrdinateOrientation},
+    clap::Parser,
     image::ImageReader,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     screen_13_fx::*,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::{io::Cursor, sync::Arc, time::Instant},
 };
 
@@ -15,7 +16,8 @@ fn main() -> anyhow::Result<()> {
     profile_with_puffin::init();
 
     // Standard Screen 13 stuff
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let display = GraphicPresenter::new(&window.device)?;
     let mut image_loader = ImageLoader::new(&window.device)?;
     let mut pool = HashPool::new(&window.device);
@@ -158,4 +160,11 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     Ok(())
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

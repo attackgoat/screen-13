@@ -2,10 +2,11 @@ mod profile_with_puffin;
 
 use {
     bytemuck::cast_slice,
+    clap::Parser,
     glam::{vec3, Mat4, Vec3, Vec4},
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::sync::Arc,
 };
 
@@ -46,7 +47,8 @@ fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let depth_stencil_format = best_depth_stencil_format(&window.device);
     let mut pool = LazyPool::new(&window.device);
     let fill_background = create_fill_background_pipeline(&window.device);
@@ -605,4 +607,11 @@ fn write_light_buf(buf: &mut Lease<Buffer>) {
     write_vec4_to_slice(vec3(p * 0.5, p, -p).extend(1.0), &mut data[16..]);
     write_vec4_to_slice(vec3(-p, -p * 0.5, -p).extend(1.0), &mut data[32..]);
     write_vec4_to_slice(vec3(p, -p * 0.5, -p).extend(1.0), &mut data[48..]);
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

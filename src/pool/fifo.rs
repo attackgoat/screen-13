@@ -267,7 +267,7 @@ impl Pool<ImageInfo, Image> for FifoPool {
             // flags)
             for idx in 0..cache.len() {
                 let item = unsafe { cache.get_unchecked(idx) };
-                if item.info.array_elements == info.array_elements
+                if item.info.array_layer_count == info.array_layer_count
                     && item.info.depth == info.depth
                     && item.info.fmt == info.fmt
                     && item.info.height == info.height

@@ -73,13 +73,13 @@ impl RayTracePipeline {
     /// # use screen_13::driver::ray_trace::{RayTracePipeline, RayTracePipelineInfo, RayTraceShaderGroup};
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_rgen_code = [0u8; 1];
     /// # let my_chit_code = [0u8; 1];
     /// # let my_miss_code = [0u8; 1];
     /// # let my_shadow_code = [0u8; 1];
     /// // shader code is raw SPIR-V code as bytes
-    /// let info = RayTracePipelineInfo::new().max_ray_recursion_depth(1);
+    /// let info = RayTracePipelineInfo::default().to_builder().max_ray_recursion_depth(1);
     /// let pipeline = RayTracePipeline::create(
     ///     &device,
     ///     info,

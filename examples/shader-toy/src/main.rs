@@ -35,10 +35,11 @@ mod res {
 use {
     anyhow::Context,
     bytemuck::{bytes_of, Pod, Zeroable},
+    clap::Parser,
     pak::{Pak, PakBuf},
     screen_13::prelude::*,
     screen_13_fx::*,
-    screen_13_window::Window,
+    screen_13_window::WindowBuilder,
     std::{sync::Arc, time::Instant},
     winit::dpi::PhysicalSize,
 };
@@ -46,7 +47,9 @@ use {
 fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
 
-    let window = Window::builder()
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
         .desired_image_count(3)
         .window(|builder| builder.with_inner_size(PhysicalSize::new(1280.0f64, 720.0f64)))
         .build()?;
@@ -315,4 +318,11 @@ fn main() -> anyhow::Result<()> {
         .context("Unable to run event loop")?;
 
     Ok(())
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

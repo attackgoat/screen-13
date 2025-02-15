@@ -1,7 +1,8 @@
 use {
+    clap::Parser,
     screen_13::{
         driver::{
-            device::{Device, DeviceInfo},
+            device::{Device, DeviceInfoBuilder},
             surface::Surface,
             swapchain::{Swapchain, SwapchainInfo},
         },
@@ -34,7 +35,9 @@ impl ApplicationHandler for Application {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes().with_title("Screen 13");
         let window = event_loop.create_window(window_attributes).unwrap();
-        let device = Arc::new(Device::create_display(DeviceInfo::default(), &window).unwrap());
+        let args = Args::parse();
+        let device_info = DeviceInfoBuilder::default().debug(args.debug);
+        let device = Arc::new(Device::create_display(device_info, &window).unwrap());
         let display_pool = Box::new(HashPool::new(&device));
         let display = Display::new(&device, display_pool, 3, 0).unwrap();
         let surface = Surface::create(&device, &window).unwrap();
@@ -78,6 +81,13 @@ impl ApplicationHandler for Application {
             _ => (),
         }
     }
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }
 
 struct Context {

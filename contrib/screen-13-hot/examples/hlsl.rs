@@ -1,4 +1,5 @@
 use {
+    clap::Parser,
     screen_13::prelude::*,
     screen_13_hot::prelude::*,
     screen_13_window::{Window, WindowError},
@@ -12,7 +13,8 @@ use {
 fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
 
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = Window::builder().debug(args.debug).build()?;
 
     // Create a graphic pipeline - the same as normal except for "Hot" prefixes and we provide the
     // shader source code path instead of the shader source code bytes
@@ -46,4 +48,11 @@ fn main() -> Result<(), WindowError> {
 
         frame_index += 1;
     })
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

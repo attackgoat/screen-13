@@ -1,5 +1,6 @@
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit},
+    clap::Parser,
     glam::{Mat4, Quat, Vec3},
     pak::{
         anim::{Channel, Interpolation, Outputs},
@@ -8,7 +9,7 @@ use {
         Pak, PakBuf,
     },
     screen_13::prelude::*,
-    screen_13_window::{Window, WindowError},
+    screen_13_window::{WindowBuilder, WindowError},
     std::{
         cmp::Ordering,
         env::current_exe,
@@ -27,7 +28,8 @@ fn main() -> Result<(), WindowError> {
     let pak_path = current_exe().unwrap().parent().unwrap().join("res.pak");
     let mut pak = PakBuf::open(pak_path).unwrap();
 
-    let window = Window::new()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let device = &window.device;
 
     let pipeline = create_pipeline(device, &mut pak)?;
@@ -344,6 +346,13 @@ impl Animation {
 
         (idx_a, idx_b, ab)
     }
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }
 
 #[repr(C)]

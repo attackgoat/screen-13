@@ -13,11 +13,14 @@ use {
             AccelerationStructure, AccelerationStructureGeometry,
             AccelerationStructureGeometryInfo, DeviceOrHostAddress,
         },
-        buffer::{Buffer, BufferSubresource},
+        buffer::{Buffer, BufferSubresourceRange},
         compute::ComputePipeline,
         device::Device,
         graphic::{DepthStencilMode, GraphicPipeline},
-        image::{Image, ImageSubresource, ImageViewInfo},
+        image::{
+            image_subresource_range_contains, image_subresource_range_intersects, Image,
+            ImageViewInfo,
+        },
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
     },
@@ -63,7 +66,7 @@ pub type DescriptorSetIndex = u32;
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::driver::shader::Shader;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let mut my_graph = RenderGraph::new();
 /// # let info = AccelerationStructureInfo::blas(1);
 /// my_graph.begin_pass("my acceleration pass")
@@ -103,7 +106,7 @@ impl Acceleration<'_> {
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let mut my_graph = RenderGraph::new();
     /// # let info = AccelerationStructureInfo::blas(1);
     /// # let blas_accel_struct = AccelerationStructure::create(&device, info)?;
@@ -123,35 +126,32 @@ impl Acceleration<'_> {
     ///         .write_node(blas_node)
     ///         .write_node(scratch_buf)
     ///         .record_acceleration(move |acceleration, bindings| {
-    ///             let info = AccelerationStructureGeometryInfo {
-    ///                 ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-    ///                 flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-    ///                 geometries: vec![AccelerationStructureGeometry {
-    ///                     max_primitive_count: 64,
-    ///                     flags: vk::GeometryFlagsKHR::OPAQUE,
-    ///                     geometry: AccelerationStructureGeometryData::Triangles {
-    ///                         index_data: DeviceOrHostAddress::DeviceAddress(
-    ///                             Buffer::device_address(&bindings[index_node])
-    ///                         ),
-    ///                         index_type: vk::IndexType::UINT32,
-    ///                         max_vertex: 42,
-    ///                         transform_data: None,
-    ///                         vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
-    ///                             &bindings[vertex_node],
-    ///                         )),
-    ///                         vertex_format: vk::Format::R32G32B32_SFLOAT,
-    ///                         vertex_stride: 12,
-    ///                     },
-    ///                 }],
+    ///             let geom = AccelerationStructureGeometry {
+    ///                 max_primitive_count: 64,
+    ///                 flags: vk::GeometryFlagsKHR::OPAQUE,
+    ///                 geometry: AccelerationStructureGeometryData::Triangles {
+    ///                     index_addr: DeviceOrHostAddress::DeviceAddress(
+    ///                         Buffer::device_address(&bindings[index_node])
+    ///                     ),
+    ///                     index_type: vk::IndexType::UINT32,
+    ///                     max_vertex: 42,
+    ///                     transform_addr: None,
+    ///                     vertex_addr: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
+    ///                         &bindings[vertex_node],
+    ///                     )),
+    ///                     vertex_format: vk::Format::R32G32B32_SFLOAT,
+    ///                     vertex_stride: 12,
+    ///                 },
     ///             };
-    ///             let ranges = vk::AccelerationStructureBuildRangeInfoKHR {
+    ///             let build_range = vk::AccelerationStructureBuildRangeInfoKHR {
     ///                 first_vertex: 0,
     ///                 primitive_count: 1,
     ///                 primitive_offset: 0,
     ///                 transform_offset: 0,
     ///             };
+    ///             let info = AccelerationStructureGeometryInfo::blas([(geom, build_range)]);
     ///
-    ///             acceleration.build_structure(blas_node, scratch_buf, &info, &[ranges]);
+    ///             acceleration.build_structure(&info, blas_node, Buffer::device_address(&bindings[scratch_buf]));
     ///         });
     /// # Ok(()) }
     /// ```
@@ -907,7 +907,7 @@ pub trait Access {
 }
 
 impl Access for ComputePipeline {
-    const DEFAULT_READ: AccessType = AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer;
+    const DEFAULT_READ: AccessType = AccessType::ComputeShaderReadOther;
     const DEFAULT_WRITE: AccessType = AccessType::ComputeShaderWrite;
 }
 
@@ -935,6 +935,42 @@ macro_rules! bind {
                     }
 
                     pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(Arc::clone(self)));
+
+                    PipelinePassRef {
+                        __: PhantomData,
+                        pass,
+                    }
+                }
+            }
+
+            impl<'a> Bind<PassRef<'a>, PipelinePassRef<'a, [<$name Pipeline>]>> for Arc<[<$name Pipeline>]> {
+                // TODO: Allow binding as explicit secondary command buffers? like with compute/raytrace stuff
+                fn bind(self, mut pass: PassRef<'a>) -> PipelinePassRef<'a, [<$name Pipeline>]> {
+                    let pass_ref = pass.as_mut();
+                    if pass_ref.execs.last().unwrap().pipeline.is_some() {
+                        // Binding from PipelinePass -> PipelinePass (changing shaders)
+                        pass_ref.execs.push(Default::default());
+                    }
+
+                    pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(self));
+
+                    PipelinePassRef {
+                        __: PhantomData,
+                        pass,
+                    }
+                }
+            }
+
+            impl<'a> Bind<PassRef<'a>, PipelinePassRef<'a, [<$name Pipeline>]>> for [<$name Pipeline>] {
+                // TODO: Allow binding as explicit secondary command buffers? like with compute/raytrace stuff
+                fn bind(self, mut pass: PassRef<'a>) -> PipelinePassRef<'a, [<$name Pipeline>]> {
+                    let pass_ref = pass.as_mut();
+                    if pass_ref.execs.last().unwrap().pipeline.is_some() {
+                        // Binding from PipelinePass -> PipelinePass (changing shaders)
+                        pass_ref.execs.push(Default::default());
+                    }
+
+                    pass_ref.execs.last_mut().unwrap().pipeline = Some(ExecutionPipeline::$name(Arc::new(self)));
 
                     PipelinePassRef {
                         __: PhantomData,
@@ -991,7 +1027,7 @@ bind!(RayTrace);
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::graph::node::ImageNode;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let info = ImageInfo::image_2d(32, 32, vk::Format::R8G8B8A8_UNORM, vk::ImageUsageFlags::SAMPLED);
 /// # let image = Image::create(&device, info)?;
 /// # let mut my_graph = RenderGraph::new();
@@ -1130,7 +1166,7 @@ impl Index<AnyImageNode> for Bindings<'_> {
 /// # use screen_13::driver::shader::{Shader};
 /// # use screen_13::graph::RenderGraph;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let info = ComputePipelineInfo::default();
 /// # let shader = Shader::new_compute([0u8; 1].as_slice());
 /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -1184,7 +1220,7 @@ impl Compute<'_> {
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
     /// # let info = ComputePipelineInfo::default();
@@ -1270,7 +1306,7 @@ impl Compute<'_> {
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, buf_info)?;
     /// # let info = ComputePipelineInfo::default();
@@ -1366,7 +1402,7 @@ impl Compute<'_> {
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let info = ComputePipelineInfo::default();
     /// # let shader = Shader::new_compute([0u8; 1].as_slice());
     /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -1428,7 +1464,7 @@ impl Compute<'_> {
     /// # use screen_13::driver::shader::{Shader};
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let info = ComputePipelineInfo::default();
     /// # let shader = Shader::new_compute([0u8; 1].as_slice());
     /// # let my_compute_pipeline = Arc::new(ComputePipeline::create(&device, info, shader)?);
@@ -1565,7 +1601,7 @@ impl From<(DescriptorSetIndex, BindingIndex, [BindingOffset; 1])> for Descriptor
 /// # use screen_13::graph::RenderGraph;
 /// # use screen_13::driver::shader::Shader;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let my_frag_code = [0u8; 1];
 /// # let my_vert_code = [0u8; 1];
 /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -1608,7 +1644,7 @@ impl Draw<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -1686,7 +1722,7 @@ impl Draw<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let buf_info = BufferInfo::device_mem(8, vk::BufferUsageFlags::VERTEX_BUFFER);
     /// # let my_vtx_buf = Buffer::create(&device, buf_info)?;
     /// # let my_frag_code = [0u8; 1];
@@ -1865,7 +1901,7 @@ impl Draw<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -2076,7 +2112,7 @@ impl Draw<'_> {
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -2145,7 +2181,7 @@ impl Draw<'_> {
     /// # use screen_13::graph::RenderGraph;
     /// # use screen_13::driver::shader::Shader;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_frag_code = [0u8; 1];
     /// # let my_vert_code = [0u8; 1];
     /// # let vert = Shader::new_vertex(my_vert_code.as_slice());
@@ -2324,7 +2360,6 @@ impl<'a> PassRef<'a> {
         graph.passes.push(Pass {
             execs: vec![Default::default()], // We start off with a default execution!
             name,
-            render_area: None,
         });
 
         Self {
@@ -2357,12 +2392,13 @@ impl<'a> PassRef<'a> {
         let idx = node.index();
         let binding = &self.graph.bindings[idx];
 
-        let mut node_access_range = None;
-        if let Some(buf) = binding.as_driver_buffer() {
-            node_access_range = Some(Subresource::Buffer((0..buf.info.size).into()));
+        let node_access_range = if let Some(buf) = binding.as_driver_buffer() {
+            Subresource::Buffer((0..buf.info.size).into())
         } else if let Some(image) = binding.as_driver_image() {
-            node_access_range = Some(Subresource::Image(image.info.default_view_info().into()))
-        }
+            Subresource::Image(image.info.default_view_info().into())
+        } else {
+            Subresource::AccelerationStructure
+        };
 
         self.push_node_access(node, access, node_access_range);
     }
@@ -2399,7 +2435,7 @@ impl<'a> PassRef<'a> {
     ) where
         N: View,
     {
-        self.push_node_access(node, access, Some(subresource.into().into()));
+        self.push_node_access(node, access, subresource.into().into());
     }
 
     fn as_mut(&mut self) -> &mut Pass {
@@ -2465,12 +2501,7 @@ impl<'a> PassRef<'a> {
         self.exec_idx += 1;
     }
 
-    fn push_node_access(
-        &mut self,
-        node: impl Node,
-        access: AccessType,
-        subresource: Option<Subresource>,
-    ) {
+    fn push_node_access(&mut self, node: impl Node, access: AccessType, subresource: Subresource) {
         let node_idx = node.index();
         self.assert_bound_graph_node(node);
 
@@ -2484,8 +2515,8 @@ impl<'a> PassRef<'a> {
             .unwrap()
             .accesses
             .entry(node_idx)
-            .and_modify(|accesses| accesses[1] = access)
-            .or_insert([access, access]);
+            .and_modify(|accesses| accesses.push(access))
+            .or_insert(vec![access]);
     }
 
     /// Informs the pass that the next recorded command buffer will read the given `node` using
@@ -2659,7 +2690,7 @@ where
         <N as View>::Information: Into<ViewType>,
     {
         self.pass
-            .push_node_access(node, access, Some(subresource.into().into()));
+            .push_node_access(node, access, subresource.into().into());
         self.push_node_view_bind(node, view_info.into(), descriptor.into());
 
         self
@@ -2689,12 +2720,13 @@ where
         let idx = node.index();
         let binding = &self.pass.graph.bindings[idx];
 
-        let mut node_access_range = None;
-        if let Some(buf) = binding.as_driver_buffer() {
-            node_access_range = Some(Subresource::Buffer((0..buf.info.size).into()));
+        let node_access_range = if let Some(buf) = binding.as_driver_buffer() {
+            Subresource::Buffer((0..buf.info.size).into())
         } else if let Some(image) = binding.as_driver_image() {
-            node_access_range = Some(Subresource::Image(image.info.default_view_info().into()))
-        }
+            Subresource::Image(image.info.default_view_info().into())
+        } else {
+            Subresource::AccelerationStructure
+        };
 
         self.pass.push_node_access(node, access, node_access_range);
     }
@@ -2734,7 +2766,7 @@ where
         N: View,
     {
         self.pass
-            .push_node_access(node, access, Some(subresource.into().into()));
+            .push_node_access(node, access, subresource.into().into());
     }
 
     /// Binds a Vulkan acceleration structure, buffer, or image to the graph associated with this
@@ -3062,8 +3094,6 @@ impl PipelinePassRef<'_, ComputePipeline> {
 impl PipelinePassRef<'_, GraphicPipeline> {
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call attach before resolve or store.
     pub fn attach_color(
         self,
         attachment_idx: AttachmentIndex,
@@ -3078,8 +3108,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call attach before resolve or store.
     pub fn attach_color_as(
         mut self,
         attachment_idx: AttachmentIndex,
@@ -3171,7 +3199,7 @@ impl PipelinePassRef<'_, GraphicPipeline> {
         self.pass.push_node_access(
             image,
             AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
@@ -3179,8 +3207,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call attach before resolve or store.
     pub fn attach_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
@@ -3191,8 +3217,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_DONT_CARE` for the render pass attachment, and loads an
     /// image into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call attach before resolve or store.
     pub fn attach_depth_stencil_as(
         mut self,
         image: impl Into<AnyImageNode>,
@@ -3278,15 +3302,13 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             } else {
                 AccessType::StencilAttachmentWriteDepthReadOnly
             },
-            Some(Subresource::Image(image_view_info.into())),
+            Subresource::Image(image_view_info.into()),
         );
 
         self
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_color(
         self,
         attachment_idx: AttachmentIndex,
@@ -3296,8 +3318,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_color_value(
         self,
         attachment_idx: AttachmentIndex,
@@ -3312,8 +3332,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_color_value_as(
         mut self,
         attachment_idx: AttachmentIndex,
@@ -3408,25 +3426,59 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "color attachment {attachment_idx} clear incompatible with existing store"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
-        );
+        let mut image_access = AccessType::ColorAttachmentWrite;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::ColorAttachmentRead | AccessType::ColorAttachmentReadWrite => {
+                        AccessType::ColorAttachmentReadWrite
+                    }
+                    AccessType::ColorAttachmentWrite => AccessType::ColorAttachmentWrite,
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the clear access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
         self.clear_depth_stencil_value(image, 1.0, 0)
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_depth_stencil_value(
         self,
         image: impl Into<AnyImageNode>,
@@ -3441,8 +3493,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
     }
 
     /// Clears the render pass attachment of any existing data.
-    ///
-    /// _NOTE:_ Order matters, call clear before resolve or store.
     pub fn clear_depth_stencil_value_as(
         mut self,
         image: impl Into<AnyImageNode>,
@@ -3519,11 +3569,94 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "depth/stencil attachment clear incompatible with existing store"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::DepthStencilAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
-        );
+        let mut image_access = if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+        {
+            AccessType::DepthStencilAttachmentWrite
+        } else if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH)
+        {
+            AccessType::DepthAttachmentWriteStencilReadOnly
+        } else {
+            debug_assert!(image_view_info
+                .aspect_mask
+                .contains(vk::ImageAspectFlags::STENCIL));
+
+            AccessType::StencilAttachmentWriteDepthReadOnly
+        };
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::DepthAttachmentWriteStencilReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::STENCIL)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::DepthAttachmentWriteStencilReadOnly
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentRead => {
+                        if !image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        } else {
+                            AccessType::DepthAttachmentWriteStencilReadOnly
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentWrite => {
+                        AccessType::DepthStencilAttachmentWrite
+                    }
+                    AccessType::StencilAttachmentWriteDepthReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        }
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the clear access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
@@ -3539,8 +3672,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
     /// into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color(
         self,
         attachment_idx: AttachmentIndex,
@@ -3555,8 +3686,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
     /// into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_color_as(
         mut self,
         attachment_idx: AttachmentIndex,
@@ -3645,19 +3774,55 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "color attachment {attachment_idx} load incompatible with existing store"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::ColorAttachmentRead,
-            Some(Subresource::Image(image_view_info.into())),
-        );
+        let mut image_access = AccessType::ColorAttachmentRead;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing write access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::ColorAttachmentRead => AccessType::ColorAttachmentRead,
+                    AccessType::ColorAttachmentReadWrite | AccessType::ColorAttachmentWrite => {
+                        AccessType::ColorAttachmentReadWrite
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the load access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
     /// into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
@@ -3668,8 +3833,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_LOAD_OP_LOAD` for the render pass attachment, and loads an image
     /// into the framebuffer.
-    ///
-    /// _NOTE:_ Order matters, call load before resolve or store.
     pub fn load_depth_stencil_as(
         mut self,
         image: impl Into<AnyImageNode>,
@@ -3729,11 +3892,57 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "depth/stencil attachment load incompatible with existing store"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::DepthStencilAttachmentRead,
-            Some(Subresource::Image(image_view_info.into())),
-        );
+        let mut image_access = AccessType::DepthStencilAttachmentRead;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing write access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::DepthAttachmentWriteStencilReadOnly => {
+                        AccessType::DepthAttachmentWriteStencilReadOnly
+                    }
+                    AccessType::DepthStencilAttachmentRead => {
+                        AccessType::DepthStencilAttachmentRead
+                    }
+                    AccessType::DepthStencilAttachmentWrite => {
+                        AccessType::DepthStencilAttachmentReadWrite
+                    }
+                    AccessType::StencilAttachmentWriteDepthReadOnly => {
+                        AccessType::StencilAttachmentWriteDepthReadOnly
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the load access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
@@ -3772,8 +3981,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
     /// attachment.
-    ///
-    /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_color(
         self,
         src_attachment_idx: AttachmentIndex,
@@ -3794,8 +4001,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
     /// attachment.
-    ///
-    /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_color_as(
         mut self,
         src_attachment_idx: AttachmentIndex,
@@ -3886,19 +4091,55 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "color attachment {dst_attachment_idx} resolve incompatible with existing load"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
-        );
+        let mut image_access = AccessType::ColorAttachmentWrite;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::ColorAttachmentRead | AccessType::ColorAttachmentReadWrite => {
+                        AccessType::ColorAttachmentReadWrite
+                    }
+                    AccessType::ColorAttachmentWrite => AccessType::ColorAttachmentWrite,
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the resolve access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
     /// attachment.
-    ///
-    /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_depth_stencil(
         self,
         dst_attachment_idx: AttachmentIndex,
@@ -3921,8 +4162,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Resolves a multisample framebuffer to a non-multisample image for the render pass
     /// attachment.
-    ///
-    /// _NOTE:_ Order matters, call resolve after clear or load.
     pub fn resolve_depth_stencil_as(
         mut self,
         dst_attachment_idx: AttachmentIndex,
@@ -3948,23 +4187,94 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             stencil_mode,
         ));
 
-        self.pass.push_node_access(
-            image,
-            if image_view_info
+        let mut image_access = if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+        {
+            AccessType::DepthStencilAttachmentWrite
+        } else if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH)
+        {
+            AccessType::DepthAttachmentWriteStencilReadOnly
+        } else {
+            debug_assert!(image_view_info
                 .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                .contains(vk::ImageAspectFlags::STENCIL));
+
+            AccessType::StencilAttachmentWriteDepthReadOnly
+        };
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
             {
-                AccessType::DepthStencilAttachmentWrite
-            } else if image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH)
-            {
-                AccessType::DepthAttachmentWriteStencilReadOnly
-            } else {
-                AccessType::StencilAttachmentWriteDepthReadOnly
-            },
-            Some(Subresource::Image(image_view_info.into())),
-        );
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::DepthAttachmentWriteStencilReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::STENCIL)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::DepthAttachmentWriteStencilReadOnly
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentRead => {
+                        if !image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        } else {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentWrite => {
+                        AccessType::DepthStencilAttachmentWrite
+                    }
+                    AccessType::StencilAttachmentWriteDepthReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        }
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the resolve access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
@@ -4004,7 +4314,7 @@ impl PipelinePassRef<'_, GraphicPipeline> {
     /// sets the viewport and scissor to the same values, with a `0..1` depth if not specified by
     /// `set_depth_stencil`.
     pub fn set_render_area(mut self, x: i32, y: i32, width: u32, height: u32) -> Self {
-        self.pass.as_mut().render_area = Some(Area {
+        self.pass.as_mut().execs.last_mut().unwrap().render_area = Some(Area {
             height,
             width,
             x,
@@ -4016,8 +4326,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
     /// rendered pixels into an image.
-    ///
-    /// _NOTE:_ Order matters, call store after clear or load.
     pub fn store_color(
         self,
         attachment_idx: AttachmentIndex,
@@ -4032,8 +4340,6 @@ impl PipelinePassRef<'_, GraphicPipeline> {
 
     /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
     /// rendered pixels into an image.
-    ///
-    /// _NOTE:_ Order matters, call store after clear or load.
     pub fn store_color_as(
         mut self,
         attachment_idx: AttachmentIndex,
@@ -4120,19 +4426,55 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "color attachment {attachment_idx} store incompatible with existing load"
         );
 
-        self.pass.push_node_access(
-            image,
-            AccessType::ColorAttachmentWrite,
-            Some(Subresource::Image(image_view_info.into())),
-        );
+        let mut image_access = AccessType::ColorAttachmentWrite;
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
+            {
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::ColorAttachmentRead | AccessType::ColorAttachmentReadWrite => {
+                        AccessType::ColorAttachmentReadWrite
+                    }
+                    AccessType::ColorAttachmentWrite => AccessType::ColorAttachmentWrite,
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the store access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
 
     /// Specifies `VK_ATTACHMENT_STORE_OP_STORE` for the render pass attachment, and stores the
     /// rendered pixels into an image.
-    ///
-    /// _NOTE:_ Order matters, call store after clear or load.
     pub fn store_depth_stencil(self, image: impl Into<AnyImageNode>) -> Self {
         let image: AnyImageNode = image.into();
         let image_info = image.get(self.pass.graph);
@@ -4195,23 +4537,94 @@ impl PipelinePassRef<'_, GraphicPipeline> {
             "depth/stencil attachment store incompatible with existing load"
         );
 
-        self.pass.push_node_access(
-            image,
-            if image_view_info
+        let mut image_access = if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+        {
+            AccessType::DepthStencilAttachmentWrite
+        } else if image_view_info
+            .aspect_mask
+            .contains(vk::ImageAspectFlags::DEPTH)
+        {
+            AccessType::DepthAttachmentWriteStencilReadOnly
+        } else {
+            debug_assert!(image_view_info
                 .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                .contains(vk::ImageAspectFlags::STENCIL));
+
+            AccessType::StencilAttachmentWriteDepthReadOnly
+        };
+        let image_range = image_view_info.into();
+
+        // Upgrade existing read access to read-write
+        if let Some(accesses) = self
+            .pass
+            .as_mut()
+            .execs
+            .last_mut()
+            .unwrap()
+            .accesses
+            .get_mut(&node_idx)
+        {
+            for SubresourceAccess {
+                access,
+                subresource,
+            } in accesses
             {
-                AccessType::DepthStencilAttachmentWrite
-            } else if image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::DEPTH)
-            {
-                AccessType::DepthAttachmentWriteStencilReadOnly
-            } else {
-                AccessType::StencilAttachmentWriteDepthReadOnly
-            },
-            Some(Subresource::Image(image_view_info.into())),
-        );
+                let access_image_range = *subresource.as_image().unwrap();
+                if !image_subresource_range_intersects(access_image_range, image_range) {
+                    continue;
+                }
+
+                image_access = match *access {
+                    AccessType::DepthAttachmentWriteStencilReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::STENCIL)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::DepthAttachmentWriteStencilReadOnly
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentRead => {
+                        if !image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        } else {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        }
+                    }
+                    AccessType::DepthStencilAttachmentWrite => {
+                        AccessType::DepthStencilAttachmentWrite
+                    }
+                    AccessType::StencilAttachmentWriteDepthReadOnly => {
+                        if image_view_info
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            AccessType::DepthStencilAttachmentReadWrite
+                        } else {
+                            AccessType::StencilAttachmentWriteDepthReadOnly
+                        }
+                    }
+                    _ => continue,
+                };
+
+                *access = image_access;
+
+                // If the store access is a subset of the existing access range there is no need
+                // to push a new access
+                if image_subresource_range_contains(access_image_range, image_range) {
+                    return self;
+                }
+            }
+        }
+
+        self.pass
+            .push_node_access(image, image_access, Subresource::Image(image_range));
 
         self
     }
@@ -4277,8 +4690,8 @@ impl PipelinePassRef<'_, RayTracePipeline> {
 /// # use screen_13::driver::shader::Shader;
 /// # use screen_13::graph::RenderGraph;
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
-/// # let info = RayTracePipelineInfo::new();
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+/// # let info = RayTracePipelineInfo::default();
 /// # let my_miss_code = [0u8; 1];
 /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
 ///     [Shader::new_miss(my_miss_code.as_slice())],
@@ -4348,9 +4761,9 @@ impl RayTrace<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let shader = [0u8; 1];
-    /// # let info = RayTracePipelineInfo::new();
+    /// # let info = RayTracePipelineInfo::default();
     /// # let my_miss_code = [0u8; 1];
     /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
     /// #     [Shader::new_miss(my_miss_code.as_slice())],
@@ -4418,9 +4831,9 @@ impl RayTrace<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let shader = [0u8; 1];
-    /// # let info = RayTracePipelineInfo::new();
+    /// # let info = RayTracePipelineInfo::default();
     /// # let my_miss_code = [0u8; 1];
     /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
     /// #     [Shader::new_miss(my_miss_code.as_slice())],
@@ -4517,9 +4930,9 @@ impl RayTrace<'_> {
     /// # use screen_13::driver::shader::Shader;
     /// # use screen_13::graph::RenderGraph;
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let shader = [0u8; 1];
-    /// # let info = RayTracePipelineInfo::new();
+    /// # let info = RayTracePipelineInfo::default();
     /// # let my_miss_code = [0u8; 1];
     /// # let my_ray_trace_pipeline = Arc::new(RayTracePipeline::create(&device, info,
     /// #     [Shader::new_miss(my_miss_code.as_slice())],
@@ -4611,32 +5024,24 @@ impl RayTrace<'_> {
 }
 
 /// Describes a portion of a resource which is bound.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum Subresource {
     /// Acceleration structures are bound whole.
     AccelerationStructure,
 
     /// Images may be partially bound.
-    Image(ImageSubresource),
+    Image(vk::ImageSubresourceRange),
 
     /// Buffers may be partially bound.
-    Buffer(BufferSubresource),
+    Buffer(BufferSubresourceRange),
 }
 
 impl Subresource {
-    pub(super) fn unwrap_buffer(self) -> BufferSubresource {
-        if let Self::Buffer(subresource) = self {
-            subresource
-        } else {
-            unreachable!();
-        }
-    }
-
-    pub(super) fn unwrap_image(self) -> ImageSubresource {
+    pub(super) fn as_image(&self) -> Option<&vk::ImageSubresourceRange> {
         if let Self::Image(subresource) = self {
-            subresource
+            Some(subresource)
         } else {
-            unreachable!();
+            None
         }
     }
 }
@@ -4647,14 +5052,14 @@ impl From<()> for Subresource {
     }
 }
 
-impl From<ImageSubresource> for Subresource {
-    fn from(subresource: ImageSubresource) -> Self {
+impl From<vk::ImageSubresourceRange> for Subresource {
+    fn from(subresource: vk::ImageSubresourceRange) -> Self {
         Self::Image(subresource)
     }
 }
 
-impl From<BufferSubresource> for Subresource {
-    fn from(subresource: BufferSubresource) -> Self {
+impl From<BufferSubresourceRange> for Subresource {
+    fn from(subresource: BufferSubresourceRange) -> Self {
         Self::Buffer(subresource)
     }
 }
@@ -4662,7 +5067,7 @@ impl From<BufferSubresource> for Subresource {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SubresourceAccess {
     pub access: AccessType,
-    pub subresource: Option<Subresource>,
+    pub subresource: Subresource,
 }
 
 /// Allows for a resource to be reinterpreted as differently formatted data.
@@ -4694,38 +5099,38 @@ impl View for AnyAccelerationStructureNode {
 }
 
 impl View for AnyBufferNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = BufferSubresourceRange;
+    type Subresource = BufferSubresourceRange;
 }
 
 impl View for AnyImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for BufferLeaseNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = BufferSubresourceRange;
+    type Subresource = BufferSubresourceRange;
 }
 
 impl View for BufferNode {
-    type Information = BufferSubresource;
-    type Subresource = BufferSubresource;
+    type Information = BufferSubresourceRange;
+    type Subresource = BufferSubresourceRange;
 }
 
 impl View for ImageLeaseNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for ImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 impl View for SwapchainImageNode {
     type Information = ImageViewInfo;
-    type Subresource = ImageSubresource;
+    type Subresource = vk::ImageSubresourceRange;
 }
 
 /// Describes the interpretation of a resource.
@@ -4763,8 +5168,8 @@ impl From<()> for ViewType {
     }
 }
 
-impl From<BufferSubresource> for ViewType {
-    fn from(subresource: BufferSubresource) -> Self {
+impl From<BufferSubresourceRange> for ViewType {
+    fn from(subresource: BufferSubresourceRange) -> Self {
         Self::Buffer(subresource.start..subresource.end)
     }
 }
