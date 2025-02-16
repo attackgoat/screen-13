@@ -329,7 +329,7 @@ mod display;
 /// Things which are used in almost every single _Screen 13_ program.
 pub mod prelude {
     pub use super::{
-        display::{Display, DisplayError, ResolverPool},
+        display::{Display, DisplayError, DisplayInfo, DisplayInfoBuilder, ResolverPool},
         driver::{
             accel_struct::{
                 AccelerationStructure, AccelerationStructureGeometry,
@@ -389,4 +389,4 @@ pub mod prelude {
     };
 }
 
-pub use self::display::{Display, DisplayError, ResolverPool};
+pub use self::display::{Display, DisplayError, DisplayInfo, DisplayInfoBuilder, ResolverPool};

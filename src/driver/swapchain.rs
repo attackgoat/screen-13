@@ -4,12 +4,12 @@ use {
     super::{
         device::Device,
         image::{Image, ImageInfo},
-        AccessType, DriverError, Surface,
+        DriverError, Surface,
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::{debug, info, warn},
-    std::{ops::Deref, slice, sync::Arc, thread::panicking},
+    std::{mem::replace, ops::Deref, slice, sync::Arc, thread::panicking},
 };
 
 // TODO: This needs to track completed command buffers and not constantly create semaphores
@@ -18,7 +18,7 @@ use {
 #[derive(Debug)]
 pub struct Swapchain {
     device: Arc<Device>,
-    images: Vec<SwapchainImage>,
+    images: Box<[SwapchainImage]>,
     info: SwapchainInfo,
     suboptimal: bool,
     surface: Surface,
@@ -50,68 +50,83 @@ impl Swapchain {
     /// Gets the next available swapchain image which should be rendered to and then presented using
     /// [`present_image`][Self::present_image].
     #[profiling::function]
-    pub fn acquire_next_image(&mut self) -> Result<SwapchainImage, SwapchainError> {
-        if self.suboptimal {
-            self.recreate_swapchain()
-                .map_err(|_| SwapchainError::SurfaceLost)?;
-            self.suboptimal = false;
+    pub fn acquire_next_image(
+        &mut self,
+        acquired: vk::Semaphore,
+    ) -> Result<SwapchainImage, SwapchainError> {
+        for _ in 0..2 {
+            if self.suboptimal {
+                self.recreate_swapchain()
+                    .map_err(|_| SwapchainError::SurfaceLost)?;
+                self.suboptimal = false;
+            }
+
+            let swapchain_ext = Device::expect_swapchain_ext(&self.device);
+
+            let image_idx = unsafe {
+                swapchain_ext.acquire_next_image(
+                    self.swapchain,
+                    u64::MAX,
+                    acquired,
+                    vk::Fence::null(),
+                )
+            }
+            .map(|(idx, suboptimal)| {
+                self.suboptimal = suboptimal;
+
+                idx
+            });
+
+            match image_idx {
+                Ok(image_idx) => {
+                    let image_idx = image_idx as usize;
+
+                    assert!(image_idx < self.images.len());
+
+                    let image = unsafe { self.images.get_unchecked(image_idx) };
+                    let image = SwapchainImage::clone_swapchain(image);
+
+                    return Ok(replace(
+                        unsafe { self.images.get_unchecked_mut(image_idx) },
+                        image,
+                    ));
+                }
+                Err(err)
+                    if err == vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT
+                        || err == vk::Result::ERROR_OUT_OF_DATE_KHR
+                        || err == vk::Result::NOT_READY
+                        || err == vk::Result::SUBOPTIMAL_KHR
+                        || err == vk::Result::TIMEOUT =>
+                {
+                    self.suboptimal = true;
+
+                    // Try again to see if we can acquire an image this frame
+                    // (Makes redraw during resize look slightly better)
+                    continue;
+                }
+                Err(err) if err == vk::Result::ERROR_DEVICE_LOST => {
+                    self.suboptimal = true;
+
+                    return Err(SwapchainError::DeviceLost);
+                }
+                Err(err) if err == vk::Result::ERROR_SURFACE_LOST_KHR => {
+                    self.suboptimal = true;
+
+                    return Err(SwapchainError::SurfaceLost);
+                }
+                _ => {
+                    // Probably:
+                    // VK_ERROR_OUT_OF_HOST_MEMORY
+                    // VK_ERROR_OUT_OF_DEVICE_MEMORY
+
+                    // TODO: Maybe handle timeout in here
+
+                    return Err(SwapchainError::SurfaceLost);
+                }
+            }
         }
 
-        let acquired =
-            Device::create_semaphore(&self.device).map_err(|_| SwapchainError::DeviceLost)?;
-        let image_idx = unsafe {
-            // We checked during recreate_swapchain
-            let swapchain_ext = self.device.swapchain_ext.as_ref().unwrap_unchecked();
-
-            swapchain_ext.acquire_next_image(self.swapchain, u64::MAX, acquired, vk::Fence::null())
-        }
-        .map(|(idx, suboptimal)| {
-            if suboptimal {
-                self.suboptimal = true;
-            }
-
-            idx
-        });
-
-        match image_idx {
-            Ok(image_idx) => {
-                let mut image = self.images[image_idx as usize].clone_swapchain();
-
-                image.acquired = acquired;
-
-                Ok(image)
-            }
-            Err(err)
-                if err == vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT
-                    || err == vk::Result::ERROR_OUT_OF_DATE_KHR
-                    || err == vk::Result::NOT_READY
-                    || err == vk::Result::SUBOPTIMAL_KHR
-                    || err == vk::Result::TIMEOUT =>
-            {
-                self.suboptimal = true;
-
-                Err(SwapchainError::Suboptimal)
-            }
-            Err(err) if err == vk::Result::ERROR_DEVICE_LOST => {
-                self.suboptimal = true;
-
-                Err(SwapchainError::DeviceLost)
-            }
-            Err(err) if err == vk::Result::ERROR_SURFACE_LOST_KHR => {
-                self.suboptimal = true;
-
-                Err(SwapchainError::SurfaceLost)
-            }
-            _ => {
-                // Probably:
-                // VK_ERROR_OUT_OF_HOST_MEMORY
-                // VK_ERROR_OUT_OF_DEVICE_MEMORY
-
-                // TODO: Maybe handle timeout in here
-
-                Err(SwapchainError::SurfaceLost)
-            }
-        }
+        Err(SwapchainError::Suboptimal)
     }
 
     fn clamp_desired_image_count(
@@ -124,20 +139,12 @@ impl Swapchain {
             desired_image_count = desired_image_count.min(surface_capabilities.max_image_count);
         }
 
-        desired_image_count
+        desired_image_count.min(u8::MAX as u32)
     }
 
     #[profiling::function]
     fn destroy(&mut self) {
-        if let Err(err) = unsafe { self.device.device_wait_idle() } {
-            warn!("device_wait_idle() failed: {err}");
-        }
-
-        for image in self.images.drain(..) {
-            unsafe {
-                self.device.destroy_semaphore(image.rendered, None);
-            }
-        }
+        // TODO: Any cases where we need to wait for idle here?
 
         if self.swapchain != vk::SwapchainKHR::null() {
             let swapchain_ext = Device::expect_swapchain_ext(&self.device);
@@ -161,9 +168,13 @@ impl Swapchain {
     pub fn present_image(
         &mut self,
         image: SwapchainImage,
-        queue_family_index: usize,
-        queue_index: usize,
+        wait_semaphores: &[vk::Semaphore],
+        queue_family_index: u32,
+        queue_index: u32,
     ) {
+        let queue_family_index = queue_family_index as usize;
+        let queue_index = queue_index as usize;
+
         debug_assert!(
             queue_family_index < self.device.physical_device.queue_families.len(),
             "Queue family index must be within the range of the available queues created by the device."
@@ -175,13 +186,12 @@ impl Swapchain {
             "Queue index must be within the range of the available queues created by the device."
         );
 
-        // We checked when handling out the swapchain image
-        let swapchain_ext = unsafe { self.device.swapchain_ext.as_ref().unwrap_unchecked() };
-
         let present_info = vk::PresentInfoKHR::default()
-            .wait_semaphores(slice::from_ref(&image.rendered))
+            .wait_semaphores(wait_semaphores)
             .swapchains(slice::from_ref(&self.swapchain))
             .image_indices(slice::from_ref(&image.image_idx));
+
+        let swapchain_ext = Device::expect_swapchain_ext(&self.device);
 
         unsafe {
             match swapchain_ext.queue_present(
@@ -209,7 +219,6 @@ impl Swapchain {
         }
 
         let image_idx = image.image_idx as usize;
-
         self.images[image_idx] = image;
     }
 
@@ -217,70 +226,41 @@ impl Swapchain {
     fn recreate_swapchain(&mut self) -> Result<(), DriverError> {
         self.destroy();
 
-        let surface_ext = self.device.surface_ext.as_ref().ok_or_else(|| {
-            warn!("Unsupported surface extension");
-
-            DriverError::Unsupported
-        })?;
-
-        let mut surface_capabilities = unsafe {
-            surface_ext.get_physical_device_surface_capabilities(
-                *self.device.physical_device,
-                *self.surface,
-            )
-        }
-        .map_err(|err| {
-            warn!("{err}");
-
-            DriverError::Unsupported
-        })?;
-
-        // TODO: When ash flags support iter() we can simplify this!
-        for usage in [
-            vk::ImageUsageFlags::ATTACHMENT_FEEDBACK_LOOP_EXT,
-            vk::ImageUsageFlags::COLOR_ATTACHMENT,
-            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-            vk::ImageUsageFlags::FRAGMENT_DENSITY_MAP_EXT,
-            vk::ImageUsageFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR,
-            vk::ImageUsageFlags::INPUT_ATTACHMENT,
-            vk::ImageUsageFlags::INVOCATION_MASK_HUAWEI,
-            vk::ImageUsageFlags::SAMPLED,
-            vk::ImageUsageFlags::SAMPLE_BLOCK_MATCH_QCOM,
-            vk::ImageUsageFlags::SAMPLE_WEIGHT_QCOM,
-            vk::ImageUsageFlags::SHADING_RATE_IMAGE_NV,
-            vk::ImageUsageFlags::STORAGE,
-            vk::ImageUsageFlags::TRANSFER_DST,
-            vk::ImageUsageFlags::TRANSFER_SRC,
-            vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-            vk::ImageUsageFlags::VIDEO_DECODE_DPB_KHR,
-            vk::ImageUsageFlags::VIDEO_DECODE_DST_KHR,
-            vk::ImageUsageFlags::VIDEO_DECODE_SRC_KHR,
-            vk::ImageUsageFlags::VIDEO_ENCODE_DPB_KHR,
-            vk::ImageUsageFlags::VIDEO_ENCODE_DST_KHR,
-            vk::ImageUsageFlags::VIDEO_ENCODE_SRC_KHR,
-        ] {
-            if !surface_capabilities.supported_usage_flags.contains(usage) {
-                continue;
+        let (surface_capabilities, present_modes) = {
+            let surface_ext = Device::expect_surface_ext(&self.device);
+            let surface_capabilities = unsafe {
+                surface_ext.get_physical_device_surface_capabilities(
+                    *self.device.physical_device,
+                    *self.surface,
+                )
             }
+            .map_err(|err| {
+                warn!("{err}");
 
-            if Device::image_format_properties(
-                &self.device,
-                self.info.surface.format,
-                vk::ImageType::TYPE_2D,
-                vk::ImageTiling::OPTIMAL,
-                usage,
-                vk::ImageCreateFlags::empty(),
-            )
-            .is_err()
-            {
-                surface_capabilities.supported_usage_flags &= !usage;
+                DriverError::Unsupported
+            })?;
+            let present_modes = unsafe {
+                surface_ext.get_physical_device_surface_present_modes(
+                    *self.device.physical_device,
+                    *self.surface,
+                )
             }
-        }
+            .map_err(|err| {
+                warn!("{err}");
+
+                DriverError::Unsupported
+            })?;
+
+            (surface_capabilities, present_modes)
+        };
 
         let desired_image_count =
             Self::clamp_desired_image_count(self.info.desired_image_count, surface_capabilities);
 
         debug!("Swapchain image count: {}", desired_image_count);
+
+        let image_usage =
+            self.supported_surface_usage(surface_capabilities.supported_usage_flags)?;
 
         let (surface_width, surface_height) = match surface_capabilities.current_extent.width {
             std::u32::MAX => (
@@ -309,19 +289,6 @@ impl Swapchain {
         } else {
             vec![vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
         };
-
-        let present_modes = unsafe {
-            surface_ext.get_physical_device_surface_present_modes(
-                *self.device.physical_device,
-                *self.surface,
-            )
-        }
-        .map_err(|err| {
-            warn!("{err}");
-
-            DriverError::Unsupported
-        })?;
-
         let present_mode = present_mode_preference
             .into_iter()
             .find(|mode| present_modes.contains(mode))
@@ -341,12 +308,7 @@ impl Swapchain {
             &surface_capabilities.supported_usage_flags
         );
 
-        let swapchain_ext = self.device.swapchain_ext.as_ref().ok_or_else(|| {
-            warn!("Unsupported swapchain extension");
-
-            DriverError::Unsupported
-        })?;
-
+        let swapchain_ext = Device::expect_swapchain_ext(&self.device);
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(*self.surface)
             .min_image_count(desired_image_count)
@@ -356,7 +318,7 @@ impl Swapchain {
                 width: surface_width,
                 height: surface_height,
             })
-            .image_usage(surface_capabilities.supported_usage_flags)
+            .image_usage(image_usage)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
@@ -389,23 +351,20 @@ impl Swapchain {
                         surface_width,
                         surface_height,
                         self.info.surface.format,
-                        surface_capabilities.supported_usage_flags,
+                        image_usage,
                     ),
                 );
 
                 let image_idx = image_idx as u32;
                 image.name = Some(format!("swapchain{image_idx}"));
 
-                let rendered = Device::create_semaphore(&self.device)?;
-
                 Ok(SwapchainImage {
+                    exec_idx: 0,
                     image,
                     image_idx,
-                    acquired: vk::Semaphore::null(),
-                    rendered,
                 })
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Box<_>, _>>()?;
 
         debug_assert_eq!(desired_image_count, images.len() as u32);
 
@@ -428,11 +387,44 @@ impl Swapchain {
     /// Sets information about this swapchain.
     ///
     /// Previously acquired swapchain images should be discarded after calling this function.
-    pub fn set_info(&mut self, info: SwapchainInfo) {
+    pub fn set_info(&mut self, info: impl Into<SwapchainInfo>) {
+        let info: SwapchainInfo = info.into();
+
         if self.info != info {
             self.info = info;
             self.suboptimal = true;
         }
+    }
+
+    fn supported_surface_usage(
+        &mut self,
+        surface_capabilities: vk::ImageUsageFlags,
+    ) -> Result<vk::ImageUsageFlags, DriverError> {
+        let mut res = vk::ImageUsageFlags::empty();
+
+        for bit in 0..u32::BITS {
+            let usage = vk::ImageUsageFlags::from_raw(1 << bit & surface_capabilities.as_raw());
+            if usage.is_empty() {
+                continue;
+            }
+
+            if Device::image_format_properties(
+                &self.device,
+                self.info.surface.format,
+                vk::ImageType::TYPE_2D,
+                vk::ImageTiling::OPTIMAL,
+                usage,
+                vk::ImageCreateFlags::empty(),
+            )?
+            .is_none()
+            {
+                continue;
+            }
+
+            res |= usage;
+        }
+
+        Ok(res)
     }
 }
 
@@ -447,53 +439,6 @@ impl Drop for Swapchain {
     }
 }
 
-/// An opaque type representing a swapchain image.
-#[derive(Debug)]
-pub struct SwapchainImage {
-    pub(crate) acquired: vk::Semaphore,
-    image: Image,
-    image_idx: u32,
-    pub(crate) rendered: vk::Semaphore,
-}
-
-impl SwapchainImage {
-    pub(crate) fn access(
-        &mut self,
-        access: AccessType,
-        range: vk::ImageSubresourceRange,
-    ) -> impl Iterator<Item = (AccessType, vk::ImageSubresourceRange)> + '_ {
-        Image::access(self, access, range)
-    }
-
-    fn clone_swapchain(&self) -> Self {
-        let &Self {
-            acquired,
-            image_idx,
-            rendered,
-            ..
-        } = self;
-
-        Self {
-            acquired,
-            image: Image::clone_swapchain(&self.image),
-            image_idx,
-            rendered,
-        }
-    }
-
-    pub(crate) fn unbind(&mut self) -> Self {
-        self.clone_swapchain()
-    }
-}
-
-impl Deref for SwapchainImage {
-    type Target = Image;
-
-    fn deref(&self) -> &Self::Target {
-        &self.image
-    }
-}
-
 /// Describes the condition of a swapchain.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SwapchainError {
@@ -505,6 +450,38 @@ pub enum SwapchainError {
 
     /// The surface was lost and must be recreated, which includes any operating system window.
     SurfaceLost,
+}
+
+/// An opaque type representing a swapchain image.
+#[derive(Debug)]
+pub struct SwapchainImage {
+    pub(crate) exec_idx: usize,
+    image: Image,
+    image_idx: u32,
+}
+
+impl SwapchainImage {
+    pub(crate) fn clone_swapchain(this: &Self) -> Self {
+        let Self {
+            exec_idx,
+            image,
+            image_idx,
+        } = this;
+
+        Self {
+            exec_idx: *exec_idx,
+            image: Image::clone_swapchain(image),
+            image_idx: *image_idx,
+        }
+    }
+}
+
+impl Deref for SwapchainImage {
+    type Target = Image;
+
+    fn deref(&self) -> &Self::Target {
+        &self.image
+    }
 }
 
 /// Information used to create a [`Swapchain`] instance.
@@ -628,19 +605,19 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Field not initialized: height")]
-    pub fn accel_struct_info_builder_uninit_height() {
+    pub fn swapchain_info_builder_uninit_height() {
         Builder::default().build();
     }
 
     #[test]
     #[should_panic(expected = "Field not initialized: surface")]
-    pub fn accel_struct_info_builder_uninit_surface() {
+    pub fn swapchain_info_builder_uninit_surface() {
         Builder::default().height(42).build();
     }
 
     #[test]
     #[should_panic(expected = "Field not initialized: width")]
-    pub fn accel_struct_info_builder_uninit_width() {
+    pub fn swapchain_info_builder_uninit_width() {
         Builder::default()
             .height(42)
             .surface(vk::SurfaceFormatKHR::default())

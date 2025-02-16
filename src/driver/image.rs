@@ -299,7 +299,14 @@ impl Image {
 
         // Does NOT copy over the image accesses!
         let Self { image, info, .. } = *this;
-        let accesses = Mutex::new(ImageAccess::new(info));
+        let mut accesses = ImageAccess::new(info);
+
+        // Force previous access to general to wait for presentation
+        for access in &mut accesses.accesses {
+            *access = AccessType::General;
+        }
+
+        let accesses = Mutex::new(accesses);
 
         Self {
             accesses,

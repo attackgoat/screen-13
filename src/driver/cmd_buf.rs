@@ -5,19 +5,22 @@ use {
     std::{fmt::Debug, ops::Deref, sync::Arc, thread::panicking},
 };
 
+// TODO: Expose command functions so the fence, device, waiting flags do not
+// need to be public
+
 /// Represents a Vulkan command buffer to which some work has been submitted.
 #[derive(Debug)]
 pub struct CommandBuffer {
     cmd_buf: vk::CommandBuffer,
     pub(crate) device: Arc<Device>,
     droppables: Vec<Box<dyn Debug + Send + 'static>>,
-    droppable_semaphores: Vec<vk::Semaphore>,
     pub(crate) fence: vk::Fence, // Keeps state because everyone wants this
 
     /// Information used to create this object.
     pub info: CommandBufferInfo,
 
     pub(crate) pool: vk::CommandPool,
+    pub(crate) waiting: bool,
 }
 
 impl CommandBuffer {
@@ -55,16 +58,16 @@ impl CommandBuffer {
                     DriverError::Unsupported
                 })?
         }[0];
-        let fence = Device::create_fence(&device, true)?;
+        let fence = Device::create_fence(&device, false)?;
 
         Ok(Self {
             cmd_buf,
             device,
             droppables: vec![],
-            droppable_semaphores: vec![],
             fence,
             info,
             pool,
+            waiting: false,
         })
     }
 
@@ -76,12 +79,6 @@ impl CommandBuffer {
         }
 
         this.droppables.clear();
-
-        for semaphore in this.droppable_semaphores.drain(..) {
-            unsafe {
-                this.device.destroy_semaphore(semaphore, None);
-            }
-        }
     }
 
     /// Returns `true` after the GPU has executed the previous submission to this command buffer.
@@ -89,6 +86,10 @@ impl CommandBuffer {
     /// See [`Self::wait_until_executed`] to block while checking.
     #[profiling::function]
     pub fn has_executed(&self) -> Result<bool, DriverError> {
+        if !self.waiting {
+            return Ok(false);
+        }
+
         let res = unsafe { self.device.get_fence_status(self.fence) };
 
         match res {
@@ -113,17 +114,20 @@ impl CommandBuffer {
         this.droppables.push(Box::new(thing_to_drop));
     }
 
-    pub(crate) fn push_fenced_semaphore(this: &mut Self, semaphore: vk::Semaphore) {
-        this.droppable_semaphores.push(semaphore);
-    }
-
     /// Stalls by blocking the current thread until the GPU has executed the previous submission to
     /// this command buffer.
     ///
     /// See [`Self::has_executed`] to check without blocking.
     #[profiling::function]
-    pub fn wait_until_executed(&self) -> Result<(), DriverError> {
-        Device::wait_for_fence(&self.device, &self.fence)
+    pub fn wait_until_executed(&mut self) -> Result<(), DriverError> {
+        if !self.waiting {
+            return Ok(());
+        }
+
+        Device::wait_for_fence(&self.device, &self.fence)?;
+        self.waiting = false;
+
+        Ok(())
     }
 }
 
@@ -145,7 +149,7 @@ impl Drop for CommandBuffer {
         }
 
         unsafe {
-            if Device::wait_for_fence(&self.device, &self.fence).is_err() {
+            if self.waiting && Device::wait_for_fence(&self.device, &self.fence).is_err() {
                 return;
             }
 
