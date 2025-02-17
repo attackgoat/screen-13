@@ -1,7 +1,7 @@
 mod profile_with_puffin;
 
 use {
-    bytemuck::cast_slice,
+    bytemuck::{bytes_of, cast_slice},
     clap::Parser,
     glam::{vec3, Mat4, Vec3, Vec4},
     inline_spirv::inline_spirv,
@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
     let depth_stencil_format = best_depth_stencil_format(&window.device);
     let mut pool = LazyPool::new(&window.device);
     let fill_background = create_fill_background_pipeline(&window.device);
-    let prepass = create_prepass_pipeline(&event_loop.device);
+    let prepass = create_prepass_pipeline(&window.device);
     let pbr = create_pbr_pipeline(&window.device);
     let funky_shape = create_funky_shape(&window.device, &mut pool)?;
 
@@ -100,6 +100,7 @@ fn main() -> anyhow::Result<()> {
                 subpass
                     .bind_index_buffer(index_buf, vk::IndexType::UINT16)
                     .bind_vertex_buffer(vertex_buf)
+                    .push_constants(bytes_of(&obj_pos))
                     .draw_indexed(funky_shape.index_count, 1, 0, 0, 0);
             });
 
