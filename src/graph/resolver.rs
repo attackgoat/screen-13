@@ -8,7 +8,6 @@ use {
         driver::{
             accel_struct::AccelerationStructure,
             buffer::Buffer,
-            device::Device,
             format_aspect_mask,
             graphic::DepthStencilMode,
             image::{Image, ImageViewInfo},

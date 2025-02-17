@@ -1,3 +1,5 @@
+mod profile_with_puffin;
+
 use {
     clap::Parser,
     log::error,
@@ -22,6 +24,9 @@ use {
 };
 
 fn main() -> Result<(), EventLoopError> {
+    pretty_env_logger::init();
+    profile_with_puffin::init();
+
     EventLoop::new()?.run_app(&mut Application::default())
 }
 

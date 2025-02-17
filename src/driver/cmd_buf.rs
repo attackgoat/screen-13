@@ -86,10 +86,6 @@ impl CommandBuffer {
     /// See [`Self::wait_until_executed`] to block while checking.
     #[profiling::function]
     pub fn has_executed(&self) -> Result<bool, DriverError> {
-        if !self.waiting {
-            return Ok(false);
-        }
-
         let res = unsafe { self.device.get_fence_status(self.fence) };
 
         match res {

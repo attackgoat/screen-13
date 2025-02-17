@@ -34,7 +34,7 @@ spirq = "1.2"
 vk-sync = { path = "contrib/vk-sync" } #git = "https://github.com/attackgoat/vk-sync-rs.git", rev = "19fc3f811cc1d38b2231cdb8840fddf271879ac1", package = "vk-sync-fork" } #version = "0.4.0", package = "vk-sync-fork" }  # // SEE: https://github.com/gwihlidal/vk-sync-rs/pull/4 -> https://github.com/expenses/vk-sync-rs
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ash-molten = "0.19"
+ash-molten = "0.20"
 
 [dev-dependencies]
 anyhow = "1.0"
