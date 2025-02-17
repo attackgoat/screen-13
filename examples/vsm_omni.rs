@@ -436,7 +436,7 @@ fn best_2d_optimal_format(
             flags,
         );
 
-        if format_props.is_ok() {
+        if matches!(format_props, Ok(Some(_))) {
             return *format;
         }
     }

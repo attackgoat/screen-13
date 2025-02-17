@@ -155,7 +155,7 @@ fn best_depth_stencil_format(device: &Device) -> vk::Format {
             vk::ImageCreateFlags::empty(),
         );
 
-        if format_props.is_ok() {
+        if matches!(format_props, Ok(Some(_))) {
             return format;
         }
     }
