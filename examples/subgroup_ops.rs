@@ -115,7 +115,7 @@ fn exclusive_sum(
         });
 
     let output_buf = render_graph.unbind_node(output_buf);
-    let cmd_buf = render_graph
+    let mut cmd_buf = render_graph
         .resolve()
         .submit(&mut HashPool::new(device), 0, 0)?;
 

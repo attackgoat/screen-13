@@ -1,21 +1,31 @@
 use {
     super::{physical_device::PhysicalDevice, DriverError},
     ash::{ext, vk, Entry},
-    log::{debug, error, info, logger, trace, warn, Level, Metadata},
+    log::{debug, error, trace, warn},
     std::{
-        env::var,
-        ffi::{c_void, CStr, CString},
+        ffi::{CStr, CString},
         fmt::{Debug, Formatter},
         ops::Deref,
         os::raw::c_char,
+        thread::panicking,
+    },
+};
+
+#[cfg(not(target_os = "macos"))]
+use {
+    log::{info, logger, Level, Metadata},
+    std::{
+        env::var,
+        ffi::c_void,
         process::id,
-        thread::{current, panicking, park},
+        thread::{current, park},
     },
 };
 
 #[cfg(target_os = "macos")]
 use std::env::set_var;
 
+#[cfg(not(target_os = "macos"))]
 unsafe extern "system" fn vulkan_debug_callback(
     _flags: vk::DebugReportFlagsEXT,
     _obj_type: vk::DebugReportObjectTypeEXT,
@@ -155,6 +165,10 @@ impl Instance {
 
         trace!("created a Vulkan instance");
 
+        #[cfg(target_os = "macos")]
+        let (debug_loader, debug_callback, debug_utils) = (None, None, None);
+
+        #[cfg(not(target_os = "macos"))]
         let (debug_loader, debug_callback, debug_utils) = if debug {
             let debug_info = vk::DebugReportCallbackCreateInfoEXT {
                 flags: vk::DebugReportFlagsEXT::ERROR
@@ -216,9 +230,13 @@ impl Instance {
         &this.entry
     }
 
-    unsafe fn extension_names(debug: bool) -> Vec<*const i8> {
+    unsafe fn extension_names(
+        #[cfg_attr(target_os = "macos", allow(unused_variables))] debug: bool,
+    ) -> Vec<*const c_char> {
+        #[cfg_attr(target_os = "macos", allow(unused_mut))]
         let mut res = vec![];
 
+        #[cfg(not(target_os = "macos"))]
         if debug {
             #[allow(deprecated)]
             res.push(ext::debug_report::NAME.as_ptr());
@@ -233,13 +251,15 @@ impl Instance {
         this.debug_utils.is_some()
     }
 
-    fn layer_names(debug: bool) -> Vec<CString> {
-        let mut res = Vec::new();
+    fn layer_names(
+        #[cfg_attr(target_os = "macos", allow(unused_variables))] debug: bool,
+    ) -> Vec<CString> {
+        #[cfg_attr(target_os = "macos", allow(unused_mut))]
+        let mut res = vec![];
 
+        #[cfg(not(target_os = "macos"))]
         if debug {
-            if let Ok(name) = CString::new("VK_LAYER_KHRONOS_validation") {
-                res.push(name);
-            }
+            res.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
         }
 
         res

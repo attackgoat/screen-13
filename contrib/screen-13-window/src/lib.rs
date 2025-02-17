@@ -3,7 +3,7 @@ mod frame;
 pub use self::frame::FrameContext;
 
 use {
-    log::{info, warn},
+    log::{info,trace, warn},
     screen_13::{
         driver::{
             ash::vk,
@@ -14,7 +14,7 @@ use {
         },
         graph::RenderGraph,
         pool::hash::HashPool,
-        Display,
+        Display, DisplayError, DisplayInfoBuilder,
     },
     std::{error, fmt, sync::Arc},
     winit::{
@@ -67,12 +67,10 @@ impl Window {
         }
 
         impl<F> Application<F> {
-            fn create_display_swapchain(
+            fn create_display(
                 &mut self,
                 window: &winit::window::Window,
-            ) -> Result<(Display, Swapchain), DriverError> {
-                let display_pool = Box::new(HashPool::new(&self.device));
-                let display = Display::new(&self.device, display_pool, self.data.cmd_buf_count, 0)?;
+            ) -> Result<Display, DriverError> {
                 let surface = Surface::create(&self.device, &window)?;
                 let surface_formats = Surface::formats(&surface)?;
                 let surface_format = self
@@ -96,10 +94,15 @@ impl Window {
                 }
 
                 let swapchain = Swapchain::new(&self.device, surface, swapchain_info)?;
+                let display = Display::new(
+                    &self.device,
+                    swapchain,
+                    DisplayInfoBuilder::default().command_buffer_count(self.data.cmd_buf_count),
+                )?;
 
-                info!("Created swapchain");
+                trace!("created display");
 
-                Ok((display, swapchain))
+                Ok(display)
             }
 
             fn window_mode_attributes(
@@ -210,7 +213,7 @@ impl Window {
                     }
                     Ok(res) => res,
                 };
-                let (display, swapchain) = match self.create_display_swapchain(&window) {
+                let display = match self.create_display(&window) {
                     Err(err) => {
                         warn!("Unable to create swapchain: {err}");
 
@@ -221,20 +224,15 @@ impl Window {
                     }
                     Ok(res) => res,
                 };
+                let display_pool = HashPool::new(&self.device);
 
-                let mut active_window = ActiveWindow {
+                self.active_window = Some(ActiveWindow {
                     display,
+                    display_pool,
+                    display_resize: None,
                     events: vec![],
-                    swapchain,
                     window,
-                };
-
-                if !active_window.draw(&self.device, &mut self.draw_fn) {
-                    event_loop.exit();
-                    return;
-                }
-
-                self.active_window = Some(active_window);
+                });
             }
 
             fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: ()) {
@@ -252,20 +250,21 @@ impl Window {
                 if let Some(active_window) = self.active_window.as_mut() {
                     match &event {
                         WindowEvent::CloseRequested => {
-                            info!("Close requested");
+                            info!("close requested");
 
                             event_loop.exit();
                         }
                         WindowEvent::RedrawRequested => {
-                            if !active_window.draw(&self.device, &mut self.draw_fn) {
+                            let draw = active_window.draw(&self.device, &mut self.draw_fn);
+
+                            profiling::finish_frame!();
+
+                            if !draw.unwrap() {
                                 event_loop.exit();
                             }
                         }
                         WindowEvent::Resized(size) => {
-                            let mut swapchain_info = active_window.swapchain.info();
-                            swapchain_info.width = size.width;
-                            swapchain_info.height = size.height;
-                            active_window.swapchain.set_info(swapchain_info);
+                            active_window.display_resize = Some((size.width, size.height));
                         }
                         _ => (),
                     }
@@ -279,23 +278,33 @@ impl Window {
 
         struct ActiveWindow {
             display: Display,
+            display_pool: HashPool,
+            display_resize: Option<(u32, u32)>,
             events: Vec<Event<()>>,
-            swapchain: Swapchain,
             window: winit::window::Window,
         }
 
         impl ActiveWindow {
-            fn draw(&mut self, device: &Arc<Device>, mut f: impl FnMut(FrameContext)) -> bool {
-                if let Ok(swapchain_image) = self.swapchain.acquire_next_image() {
-                    self.window.pre_present_notify();
+            fn draw(
+                &mut self,
+                device: &Arc<Device>,
+                mut f: impl FnMut(FrameContext),
+            ) -> Result<bool, DisplayError> {
+                if let Some((width, height)) = self.display_resize.take() {
+                    let mut swapchain_info = self.display.swapchain_info();
+                    swapchain_info.width = width;
+                    swapchain_info.height = height;
+                    self.display.set_swapchain_info(swapchain_info);
+                }
 
+                if let Some(swapchain_image) = self.display.acquire_next_image()? {
                     let mut render_graph = RenderGraph::new();
                     let swapchain_image = render_graph.bind_node(swapchain_image);
-                    let swapchain_info = self.swapchain.info();
+                    let swapchain_info = self.display.swapchain_info();
 
                     let mut will_exit = false;
 
-                    info!("Drawing");
+                    trace!("drawing");
 
                     f(FrameContext {
                         device,
@@ -311,28 +320,24 @@ impl Window {
                     self.events.clear();
 
                     if will_exit {
-                        info!("Exit requested");
+                        info!("exit requested");
 
-                        return false;
+                        return Ok(false);
                     }
 
-                    match self.display.resolve_image(render_graph, swapchain_image) {
-                        Err(err) => {
-                            warn!("Unable to resolve swapchain image: {err}");
-
-                            return false;
-                        }
-                        Ok(swapchain_image) => self.swapchain.present_image(swapchain_image, 0, 0),
-                    }
+                    self.window.pre_present_notify();
+                    self.display
+                        .present_image(&mut self.display_pool, render_graph, swapchain_image, 0)
+                        .inspect_err(|err| {
+                            warn!("unable to present swapchain image: {err}");
+                        })?;
                 } else {
-                    warn!("Failed to acquire swapchain image");
+                    warn!("unable to acquire swapchain image");
                 }
-
-                profiling::finish_frame!();
 
                 self.window.request_redraw();
 
-                true
+                Ok(true)
             }
         }
 
@@ -346,6 +351,14 @@ impl Window {
         };
 
         self.event_loop.run_app(&mut app)?;
+
+        if let Some(ActiveWindow {
+            display, window, ..
+        }) = app.active_window.take()
+        {
+            drop(display);
+            drop(window);
+        }
 
         info!("Window closed");
 

@@ -5,6 +5,9 @@ use {
     std::{fmt::Debug, ops::Deref, sync::Arc, thread::panicking},
 };
 
+// TODO: Expose command functions so the fence, device, waiting flags do not
+// need to be public
+
 /// Represents a Vulkan command buffer to which some work has been submitted.
 #[derive(Debug)]
 pub struct CommandBuffer {
@@ -17,6 +20,7 @@ pub struct CommandBuffer {
     pub info: CommandBufferInfo,
 
     pub(crate) pool: vk::CommandPool,
+    pub(crate) waiting: bool,
 }
 
 impl CommandBuffer {
@@ -54,7 +58,7 @@ impl CommandBuffer {
                     DriverError::Unsupported
                 })?
         }[0];
-        let fence = Device::create_fence(&device, true)?;
+        let fence = Device::create_fence(&device, false)?;
 
         Ok(Self {
             cmd_buf,
@@ -63,6 +67,7 @@ impl CommandBuffer {
             fence,
             info,
             pool,
+            waiting: false,
         })
     }
 
@@ -110,8 +115,15 @@ impl CommandBuffer {
     ///
     /// See [`Self::has_executed`] to check without blocking.
     #[profiling::function]
-    pub fn wait_until_executed(&self) -> Result<(), DriverError> {
-        Device::wait_for_fence(&self.device, &self.fence)
+    pub fn wait_until_executed(&mut self) -> Result<(), DriverError> {
+        if !self.waiting {
+            return Ok(());
+        }
+
+        Device::wait_for_fence(&self.device, &self.fence)?;
+        self.waiting = false;
+
+        Ok(())
     }
 }
 
@@ -133,9 +145,11 @@ impl Drop for CommandBuffer {
         }
 
         unsafe {
-            if Device::wait_for_fence(&self.device, &self.fence).is_err() {
+            if self.waiting && Device::wait_for_fence(&self.device, &self.fence).is_err() {
                 return;
             }
+
+            Self::drop_fenced(self);
 
             self.device
                 .free_command_buffers(self.pool, from_ref(&self.cmd_buf));

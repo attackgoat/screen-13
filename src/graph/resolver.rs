@@ -1,18 +1,18 @@
 use {
     super::{
+        node::SwapchainImageNode,
         pass_ref::{Subresource, SubresourceAccess},
-        Area, Attachment, Binding, Bindings, Edge, ExecutionPipeline, Node, NodeIndex, Pass,
-        RenderGraph, Unbind,
+        Area, Attachment, Binding, Bindings, ExecutionPipeline, Node, NodeIndex, Pass, RenderGraph,
     },
     crate::{
         driver::{
             accel_struct::AccelerationStructure,
             buffer::Buffer,
-            device::Device,
             format_aspect_mask,
             graphic::DepthStencilMode,
             image::{Image, ImageViewInfo},
             image_access_layout, is_read_access, is_write_access, pipeline_stage_access_flags,
+            swapchain::SwapchainImage,
             AttachmentInfo, AttachmentRef, CommandBuffer, CommandBufferInfo, Descriptor,
             DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet, DriverError,
             FramebufferAttachmentImageInfo, FramebufferInfo, RenderPass, RenderPassInfo,
@@ -2009,13 +2009,11 @@ impl Resolver {
                     } = *resource;
 
                     trace!(
-                        "{trace_pad}buffer {:?} {:?} {:?}{:?}->{:?}{:?}",
+                        "{trace_pad}buffer {:?} {:?} {:?}->{:?}",
                         buffer,
                         offset..offset + size,
                         prev_access,
-                        image_access_layout(*prev_access),
                         next_access,
-                        image_access_layout(*next_access),
                     );
 
                     BufferBarrier {
@@ -2058,13 +2056,11 @@ impl Resolver {
                     }
 
                     trace!(
-                        "{trace_pad}image {:?} {:?} {:?}{:?}->{:?}{:?}",
+                        "{trace_pad}image {:?} {:?} {:?}->{:?}",
                         image,
                         ImageSubresourceRangeDebug(range),
                         prev_access,
-                        image_access_layout(*prev_access),
                         next_access,
-                        image_access_layout(*next_access),
                     );
 
                     ImageBarrier {
@@ -2693,10 +2689,9 @@ impl Resolver {
             "Queue index must be within the range of the available queues created by the device."
         );
 
-        unsafe {
-            Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence)
-                .map_err(|_| DriverError::OutOfMemory)?;
+        CommandBuffer::wait_until_executed(&mut cmd_buf)?;
 
+        unsafe {
             cmd_buf
                 .device
                 .begin_command_buffer(
@@ -2728,6 +2723,8 @@ impl Resolver {
                 .map_err(|_| DriverError::OutOfMemory)?;
         }
 
+        cmd_buf.waiting = true;
+
         // This graph contains references to buffers, images, and other resources which must be kept
         // alive until this graph execution completes on the GPU. Once those references are dropped
         // they will return to the pool for other things to use. The drop will happen the next time
@@ -2738,12 +2735,12 @@ impl Resolver {
         Ok(cmd_buf)
     }
 
-    pub(crate) fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
-    where
-        N: Edge<Self>,
-        N: Unbind<Self, <N as Edge<Self>>::Result>,
-    {
-        node.unbind(self)
+    pub(crate) fn swapchain_image(&mut self, node: SwapchainImageNode) -> &SwapchainImage {
+        let Some(swapchain_image) = self.graph.bindings[node.idx].as_swapchain_image() else {
+            panic!("invalid swapchain image node");
+        };
+
+        swapchain_image
     }
 
     #[profiling::function]

@@ -151,12 +151,10 @@ impl Drop for Surface {
             return;
         }
 
+        let surface_ext = Device::expect_surface_ext(&self.device);
+
         unsafe {
-            self.device
-                .surface_ext
-                .as_ref()
-                .unwrap()
-                .destroy_surface(self.surface, None);
+            surface_ext.destroy_surface(self.surface, None);
         }
     }
 }
