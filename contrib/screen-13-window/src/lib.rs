@@ -226,23 +226,13 @@ impl Window {
                 };
                 let display_pool = HashPool::new(&self.device);
 
-                let mut active_window = ActiveWindow {
+                self.active_window = Some(ActiveWindow {
                     display,
                     display_pool,
+                    display_resize: None,
                     events: vec![],
                     window,
-                };
-
-                let draw = active_window.draw(&self.device, &mut self.draw_fn);
-
-                profiling::finish_frame!();
-
-                if !draw.unwrap() {
-                    event_loop.exit();
-                    return;
-                }
-
-                self.active_window = Some(active_window);
+                });
             }
 
             fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: ()) {
@@ -274,10 +264,7 @@ impl Window {
                             }
                         }
                         WindowEvent::Resized(size) => {
-                            let mut swapchain_info = active_window.display.swapchain_info();
-                            swapchain_info.width = size.width;
-                            swapchain_info.height = size.height;
-                            active_window.display.set_swapchain_info(swapchain_info);
+                            active_window.display_resize = Some((size.width, size.height));
                         }
                         _ => (),
                     }
@@ -292,6 +279,7 @@ impl Window {
         struct ActiveWindow {
             display: Display,
             display_pool: HashPool,
+            display_resize: Option<(u32, u32)>,
             events: Vec<Event<()>>,
             window: winit::window::Window,
         }
@@ -302,6 +290,13 @@ impl Window {
                 device: &Arc<Device>,
                 mut f: impl FnMut(FrameContext),
             ) -> Result<bool, DisplayError> {
+                if let Some((width, height)) = self.display_resize.take() {
+                    let mut swapchain_info = self.display.swapchain_info();
+                    swapchain_info.width = width;
+                    swapchain_info.height = height;
+                    self.display.set_swapchain_info(swapchain_info);
+                }
+
                 if let Some(swapchain_image) = self.display.acquire_next_image()? {
                     let mut render_graph = RenderGraph::new();
                     let swapchain_image = render_graph.bind_node(swapchain_image);

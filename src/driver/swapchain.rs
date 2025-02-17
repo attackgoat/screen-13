@@ -8,7 +8,7 @@ use {
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
-    log::{debug, info, warn},
+    log::{debug, info, trace, warn},
     std::{mem::replace, ops::Deref, slice, sync::Arc, thread::panicking},
 };
 
@@ -56,9 +56,13 @@ impl Swapchain {
     ) -> Result<SwapchainImage, SwapchainError> {
         for _ in 0..2 {
             if self.suboptimal {
-                self.recreate_swapchain()
-                    .map_err(|_| SwapchainError::SurfaceLost)?;
-                self.suboptimal = false;
+                self.recreate_swapchain().map_err(|err| {
+                    if matches!(err, DriverError::Unsupported) {
+                        SwapchainError::Suboptimal
+                    } else {
+                        SwapchainError::SurfaceLost
+                    }
+                })?;
             }
 
             let swapchain_ext = Device::expect_swapchain_ext(&self.device);
@@ -72,6 +76,10 @@ impl Swapchain {
                 )
             }
             .map(|(idx, suboptimal)| {
+                if suboptimal {
+                    debug!("acquired image is suboptimal");
+                }
+
                 self.suboptimal = suboptimal;
 
                 idx
@@ -98,6 +106,8 @@ impl Swapchain {
                         || err == vk::Result::SUBOPTIMAL_KHR
                         || err == vk::Result::TIMEOUT =>
                 {
+                    warn!("unable to acquire image: {err}");
+
                     self.suboptimal = true;
 
                     // Try again to see if we can acquire an image this frame
@@ -105,21 +115,27 @@ impl Swapchain {
                     continue;
                 }
                 Err(err) if err == vk::Result::ERROR_DEVICE_LOST => {
+                    warn!("unable to acquire image: {err}");
+
                     self.suboptimal = true;
 
                     return Err(SwapchainError::DeviceLost);
                 }
                 Err(err) if err == vk::Result::ERROR_SURFACE_LOST_KHR => {
+                    warn!("unable to acquire image: {err}");
+
                     self.suboptimal = true;
 
                     return Err(SwapchainError::SurfaceLost);
                 }
-                _ => {
+                Err(err) => {
                     // Probably:
                     // VK_ERROR_OUT_OF_HOST_MEMORY
                     // VK_ERROR_OUT_OF_DEVICE_MEMORY
 
                     // TODO: Maybe handle timeout in here
+
+                    warn!("unable to acquire image: {err}");
 
                     return Err(SwapchainError::SurfaceLost);
                 }
@@ -234,30 +250,23 @@ impl Swapchain {
                     *self.surface,
                 )
             }
-            .map_err(|err| {
-                warn!("{err}");
+            .inspect_err(|err| warn!("unable to get surface capabilities: {err}"))
+            .or(Err(DriverError::Unsupported))?;
 
-                DriverError::Unsupported
-            })?;
             let present_modes = unsafe {
                 surface_ext.get_physical_device_surface_present_modes(
                     *self.device.physical_device,
                     *self.surface,
                 )
             }
-            .map_err(|err| {
-                warn!("{err}");
-
-                DriverError::Unsupported
-            })?;
+            .inspect_err(|err| warn!("unable to get surface present modes: {err}"))
+            .or(Err(DriverError::Unsupported))?;
 
             (surface_capabilities, present_modes)
         };
 
         let desired_image_count =
             Self::clamp_desired_image_count(self.info.desired_image_count, surface_capabilities);
-
-        debug!("Swapchain image count: {}", desired_image_count);
 
         let image_usage =
             self.supported_surface_usage(surface_capabilities.supported_usage_flags)?;
@@ -302,11 +311,6 @@ impl Swapchain {
         } else {
             surface_capabilities.current_transform
         };
-
-        info!(
-            "supported_usage_flags {:#?}",
-            &surface_capabilities.supported_usage_flags
-        );
 
         let swapchain_ext = Device::expect_swapchain_ext(&self.device);
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
@@ -372,13 +376,14 @@ impl Swapchain {
         self.info.width = surface_width;
         self.images = images;
         self.swapchain = swapchain;
+        self.suboptimal = false;
 
         info!(
-            "Swapchain {}x{} {:?} {present_mode:?}x{}",
+            "swapchain {}x{} {present_mode:?}x{} {:?} {image_usage:#?}",
             self.info.width,
             self.info.height,
-            self.info.surface.format,
             self.images.len(),
+            self.info.surface.format,
         );
 
         Ok(())
@@ -392,6 +397,9 @@ impl Swapchain {
 
         if self.info != info {
             self.info = info;
+
+            trace!("info: {:?}", self.info);
+
             self.suboptimal = true;
         }
     }
@@ -415,7 +423,13 @@ impl Swapchain {
                 vk::ImageTiling::OPTIMAL,
                 usage,
                 vk::ImageCreateFlags::empty(),
-            )?
+            )
+            .inspect_err(|err| {
+                warn!(
+                    "unable to get image format properties: {:?} {:?} {err}",
+                    self.info.surface.format, usage
+                )
+            })?
             .is_none()
             {
                 continue;
