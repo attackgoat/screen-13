@@ -2,10 +2,13 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit, Pod, Zeroable},
+    clap::Parser,
     glam::{vec3, Mat4, Quat, Vec3},
     inline_spirv::inline_spirv,
+    log::info,
     meshopt::remap::{generate_vertex_remap, remap_index_buffer, remap_vertex_buffer},
     screen_13::prelude::*,
+    screen_13_window::WindowBuilder,
     std::{
         env::current_exe,
         fs::{metadata, write},
@@ -13,6 +16,7 @@ use {
         sync::Arc,
     },
     tobj::{load_obj, GPU_LOAD_OPTIONS},
+    winit::{dpi::LogicalSize, event::Event, keyboard::KeyCode, window::Fullscreen},
     winit_input_helper::WinitInputHelper,
 };
 
@@ -20,7 +24,6 @@ const BLUR_PASSES: usize = 2;
 const BLUR_RADIUS: u32 = 2;
 const CUBEMAP_SIZE: u32 = 512;
 const SHADOW_BIAS: f32 = 0.3;
-const USE_GEOMETRY_SHADER: bool = true;
 
 /// Adapted from https://github.com/sydneyzh/variance_shadow_mapping_vk
 ///
@@ -44,7 +47,9 @@ fn main() -> anyhow::Result<()> {
     let cube_transform = Mat4::from_scale(Vec3::splat(10.0)).to_cols_array();
 
     let mut input = WinitInputHelper::default();
-    let event_loop = EventLoop::new()
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
         .window(|window| window.with_inner_size(LogicalSize::new(800, 600)))
         .build()?;
 
@@ -52,13 +57,14 @@ fn main() -> anyhow::Result<()> {
     let use_geometry_shader = {
         let Vulkan10Features {
             geometry_shader, ..
-        } = event_loop.device.physical_device.features_v1_0;
-        USE_GEOMETRY_SHADER && geometry_shader
+        } = window.device.physical_device.features_v1_0;
+
+        args.geometry_shader && geometry_shader
     };
 
     // Load all the immutable graphics data we will need
     let cubemap_format = best_2d_optimal_format(
-        &event_loop.device,
+        &window.device,
         &[
             vk::Format::R32G32_SFLOAT,
             vk::Format::R16G16_SFLOAT,
@@ -73,37 +79,50 @@ fn main() -> anyhow::Result<()> {
         vk::ImageCreateFlags::CUBE_COMPATIBLE,
     );
     let depth_format = best_2d_optimal_format(
-        &event_loop.device,
+        &window.device,
         &[vk::Format::D32_SFLOAT, vk::Format::D16_UNORM],
         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
         vk::ImageCreateFlags::empty(),
     );
-    let model_mesh = load_model_mesh(&event_loop.device, &model_path)?;
-    let model_shadow = load_model_shadow(&event_loop.device, &model_path)?;
-    let cube_mesh = load_cube_mesh(&event_loop.device)?;
-    let cube_shadow = load_cube_shadow(&event_loop.device)?;
-    let debug_pipeline = create_debug_pipeline(&event_loop.device)?;
-    let blur_x_pipeline = create_blur_x_pipeline(&event_loop.device)?;
-    let blur_y_pipeline = create_blur_y_pipeline(&event_loop.device)?;
-    let mesh_pipeline = create_mesh_pipeline(&event_loop.device)?;
+    let model_mesh = load_model_mesh(&window.device, &model_path)?;
+    let model_shadow = load_model_shadow(&window.device, &model_path)?;
+    let cube_mesh = load_cube_mesh(&window.device)?;
+    let cube_shadow = load_cube_shadow(&window.device)?;
+    let debug_pipeline = create_debug_pipeline(&window.device)?;
+    let blur_x_pipeline = create_blur_x_pipeline(&window.device)?;
+    let blur_y_pipeline = create_blur_y_pipeline(&window.device)?;
+    let mesh_pipeline = create_mesh_pipeline(&window.device)?;
     let shadow_pipeline = if use_geometry_shader {
-        create_shadow_pipeline_with_geometry_shader(&event_loop.device)
+        create_shadow_pipeline_with_geometry_shader(&window.device)
     } else {
-        create_shadow_pipeline(&event_loop.device)
+        create_shadow_pipeline(&window.device)
     }?;
 
     // A pool will be used for per-frame resources
-    let mut pool = FifoPool::new(&event_loop.device);
+    let mut pool = FifoPool::new(&window.device);
 
     let mut elapsed = 0.0;
-    event_loop.run(|frame| {
-        for event in frame.events {
-            input.update(event);
-        }
+    window.run(|frame| {
+        input.step_with_window_events(
+            &frame
+                .events
+                .iter()
+                .filter_map(|event| {
+                    if let Event::WindowEvent { event, .. } = event {
+                        Some(event.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Box<_>>(),
+        );
 
         // Hold spacebar to stop the light
         if !input.key_held(KeyCode::Space) {
-            elapsed += frame.dt;
+            elapsed += input
+                .delta_time()
+                .map(|dt| dt.as_secs_f32())
+                .unwrap_or(0.016);
         }
 
         // Hit F11 to enable borderless fullscreen
@@ -281,7 +300,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 for array_layer in 0..6 {
                     let mut shadow_faces_view_info = shadow_faces_info.default_view_info();
-                    shadow_faces_view_info.array_layer_count = Some(1);
+                    shadow_faces_view_info.array_layer_count = 1;
                     shadow_faces_view_info.base_array_layer = array_layer;
 
                     let mut light = light;
@@ -417,7 +436,7 @@ fn best_2d_optimal_format(
             flags,
         );
 
-        if format_props.is_ok() {
+        if matches!(format_props, Ok(Some(_))) {
             return *format;
         }
     }
@@ -1306,7 +1325,7 @@ fn load_model<T>(
     face_fn: fn(a: Vec3, b: Vec3, c: Vec3) -> [T; 3],
 ) -> anyhow::Result<Model>
 where
-    T: Default + Pod,
+    T: Default + NoUninit,
 {
     let (models, _) = load_obj(path.as_ref(), &GPU_LOAD_OPTIONS)?;
     let mut vertices =
@@ -1373,15 +1392,11 @@ where
 /// Loads an .obj model as indexed position and normal vertices
 fn load_model_mesh(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Model> {
     #[repr(C)]
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default, NoUninit)]
     struct Vertex {
         position: Vec3,
         normal: Vec3,
     }
-
-    unsafe impl Pod for Vertex {}
-
-    unsafe impl Zeroable for Vertex {}
 
     load_model(device, path, |a, b, c| {
         let u = b - a;
@@ -1414,14 +1429,10 @@ fn load_model_mesh(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Resu
 /// Loads an .obj model as indexed position vertices
 fn load_model_shadow(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Result<Model> {
     #[repr(C)]
-    #[derive(Clone, Copy, Default)]
+    #[derive(Clone, Copy, Default, NoUninit)]
     struct Vertex {
         position: Vec3,
     }
-
-    unsafe impl Pod for Vertex {}
-
-    unsafe impl Zeroable for Vertex {}
 
     load_model(device, path, |a, b, c| {
         // Make faces CCW
@@ -1431,6 +1442,17 @@ fn load_model_shadow(device: &Arc<Device>, path: impl AsRef<Path>) -> anyhow::Re
             Vertex { position: b },
         ]
     })
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
+
+    /// Use geometry shader for shadow rendering (if supported)
+    #[arg(long)]
+    geometry_shader: bool,
 }
 
 #[repr(C)]

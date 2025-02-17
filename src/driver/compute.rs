@@ -3,7 +3,7 @@
 use {
     super::{
         device::Device,
-        shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader},
+        shader::{align_spriv, DescriptorBindingMap, PipelineDescriptorInfo, Shader},
         DriverError,
     },
     ash::vk,
@@ -59,7 +59,7 @@ impl ComputePipeline {
     /// # use screen_13::driver::compute::{ComputePipeline, ComputePipelineInfo};
     /// # use screen_13::driver::shader::{Shader};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let my_shader_code = [0u8; 1];
     /// // my_shader_code is raw SPIR-V code as bytes
     /// let shader = Shader::new_compute(my_shader_code.as_slice());
@@ -83,7 +83,7 @@ impl ComputePipeline {
         let shader = shader.into();
 
         // Use SPIR-V reflection to get the types and counts of all descriptors
-        let mut descriptor_bindings = shader.descriptor_bindings(&device)?;
+        let mut descriptor_bindings = shader.descriptor_bindings();
         for (descriptor_info, _) in descriptor_bindings.values_mut() {
             if descriptor_info.binding_count() == 0 {
                 descriptor_info.set_binding_count(info.bindless_descriptor_count);
@@ -98,28 +98,25 @@ impl ComputePipeline {
             .collect::<Box<[_]>>();
 
         unsafe {
-            let shader_module_create_info = vk::ShaderModuleCreateInfo {
-                code_size: shader.spirv.len(),
-                p_code: shader.spirv.as_ptr() as *const u32,
-                ..Default::default()
-            };
             let shader_module = device
-                .create_shader_module(&shader_module_create_info, None)
+                .create_shader_module(
+                    &vk::ShaderModuleCreateInfo::default().code(align_spriv(&shader.spirv)?),
+                    None,
+                )
                 .map_err(|err| {
                     warn!("{err}");
 
                     DriverError::Unsupported
                 })?;
             let entry_name = CString::new(shader.entry_name.as_bytes()).unwrap();
-            let mut stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
+            let mut stage_create_info = vk::PipelineShaderStageCreateInfo::default()
                 .module(shader_module)
                 .stage(shader.stage)
                 .name(&entry_name);
             let specialization_info = shader.specialization_info.as_ref().map(|info| {
-                vk::SpecializationInfo::builder()
+                vk::SpecializationInfo::default()
                     .map_entries(&info.map_entries)
                     .data(&info.data)
-                    .build()
             });
 
             if let Some(specialization_info) = &specialization_info {
@@ -127,7 +124,7 @@ impl ComputePipeline {
             }
 
             let mut layout_info =
-                vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
+                vk::PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
 
             let push_constants = shader.push_constant_range();
             if let Some(push_constants) = &push_constants {
@@ -141,13 +138,13 @@ impl ComputePipeline {
 
                     DriverError::Unsupported
                 })?;
-            let pipeline_info = vk::ComputePipelineCreateInfo::builder()
-                .stage(stage_create_info.build())
+            let pipeline_info = vk::ComputePipelineCreateInfo::default()
+                .stage(stage_create_info)
                 .layout(layout);
             let pipeline = device
                 .create_compute_pipelines(
-                    vk::PipelineCache::null(),
-                    from_ref(&pipeline_info.build()),
+                    Device::pipeline_cache(&device),
+                    from_ref(&pipeline_info),
                     None,
                 )
                 .map_err(|(_, err)| {

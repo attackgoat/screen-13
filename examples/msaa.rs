@@ -2,10 +2,14 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{bytes_of, cast_slice, NoUninit},
+    clap::Parser,
     glam::{Mat4, Vec3},
     inline_spirv::inline_spirv,
+    log::warn,
     screen_13::prelude::*,
+    screen_13_window::WindowBuilder,
     std::{mem::size_of, sync::Arc},
+    winit::{event::Event, keyboard::KeyCode},
     winit_input_helper::WinitInputHelper,
 };
 
@@ -22,25 +26,40 @@ fn main() -> anyhow::Result<()> {
     profile_with_puffin::init();
 
     let mut input = WinitInputHelper::default();
-    let event_loop = EventLoop::new().build()?;
-    let depth_format = best_depth_format(&event_loop.device);
-    let sample_count = max_supported_sample_count(&event_loop.device);
-    let mesh_msaa_pipeline = create_mesh_pipeline(&event_loop.device, sample_count)?;
-    let mesh_noaa_pipeline = create_mesh_pipeline(&event_loop.device, SampleCount::Type1)?;
-    let cube_mesh = load_cube_mesh(&event_loop.device)?;
-    let mut pool = FifoPool::new(&event_loop.device);
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
+    let depth_format = best_depth_format(&window.device);
+    let sample_count = max_supported_sample_count(&window.device);
+    let mesh_msaa_pipeline = create_mesh_pipeline(&window.device, sample_count)?;
+    let mesh_noaa_pipeline = create_mesh_pipeline(&window.device, SampleCount::Type1)?;
+    let cube_mesh = load_cube_mesh(&window.device)?;
+    let mut pool = FifoPool::new(&window.device);
 
     let mut angle = 0f32;
 
-    event_loop.run(|frame| {
-        for event in frame.events {
-            input.update(event);
-        }
+    window.run(|frame| {
+        input.step_with_window_events(
+            &frame
+                .events
+                .iter()
+                .filter_map(|event| {
+                    if let Event::WindowEvent { event, .. } = event {
+                        Some(event.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Box<_>>(),
+        );
 
         // Hold the tab key to render in non-multisample mode
         let will_render_msaa = !input.key_held(KeyCode::Tab) && sample_count != SampleCount::Type1;
 
-        angle += frame.dt * 0.1;
+        angle += input
+            .delta_time()
+            .map(|dt| dt.as_secs_f32())
+            .unwrap_or(0.016)
+            * 0.1;
         let world_transform = Mat4::from_rotation_x(angle)
             * Mat4::from_rotation_y(angle * 0.61)
             * Mat4::from_rotation_z(angle * 0.22);
@@ -63,6 +82,7 @@ fn main() -> anyhow::Result<()> {
                     10.0,
                 ),
                 light_dir: Vec3::Y,
+                _pad: 0,
             }),
         );
 
@@ -158,7 +178,7 @@ fn best_depth_format(device: &Device) -> vk::Format {
             vk::ImageCreateFlags::empty(),
         );
 
-        if format_props.is_ok() {
+        if matches!(format_props, Ok(Some(_))) {
             return format;
         }
     }
@@ -309,6 +329,7 @@ fn create_mesh_pipeline(
             mat4 view;
             mat4 projection;
             vec3 light_dir;
+            uint pad;
         } scene;
 
         layout(location = 0) in vec3 position;
@@ -363,17 +384,23 @@ fn create_mesh_pipeline(
     )?))
 }
 
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
+}
+
 struct Model {
     vertex_buf: Arc<Buffer>,
     vertex_count: u32,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, NoUninit)]
 struct SceneUniformBuffer {
     view: Mat4,
     projection: Mat4,
     light_dir: Vec3,
+    _pad: u32,
 }
-
-unsafe impl NoUninit for SceneUniformBuffer {}

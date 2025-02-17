@@ -1,29 +1,34 @@
 mod profile_with_puffin;
 
 use {
+    clap::Parser,
     screen_13::prelude::*,
     screen_13_fx::*,
     screen_13_imgui::{Condition, ImGui},
+    screen_13_window::{WindowBuilder, WindowError},
+    winit::dpi::LogicalSize,
 };
 
-fn main() -> Result<(), DisplayError> {
+fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
     // Screen 13 things we need for this demo
-    let event_loop = EventLoop::new()
-        .desired_surface_format(Surface::linear_or_default)
-        .desired_swapchain_image_count(2)
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
+        .v_sync(false)
+        .window(|window| window.with_inner_size(LogicalSize::new(1024, 768)))
         .build()?;
-    let display = ComputePresenter::new(&event_loop.device)?;
-    let mut imgui = ImGui::new(&event_loop.device);
-    let mut pool = LazyPool::new(&event_loop.device);
+    let display = ComputePresenter::new(&window.device)?;
+    let mut imgui = ImGui::new(&window.device);
+    let mut pool = LazyPool::new(&window.device);
 
     // Some example state to make the demo more interesting
     let mut value = 0;
     let choices = ["test test this is 1", "test test this is 2"];
 
-    event_loop.run(|mut frame| {
+    window.run(|frame| {
         // Lease and clear an image as a stand-in for some real game or program output
         let app_image = frame.render_graph.bind_node(
             pool.lease(ImageInfo::image_2d(
@@ -41,27 +46,33 @@ fn main() -> Result<(), DisplayError> {
             .clear_color_image_value(app_image, [0.2, 0.22, 0.2, 1.0]);
 
         // Use the draw function callback to do some fun meant-for-debug-mode GUI stuff
-        let gui_image = imgui.draw_frame(&mut frame, |ui| {
-            ui.window("Hello world")
-                .position([10.0, 10.0], Condition::FirstUseEver)
-                .size([340.0, 250.0], Condition::FirstUseEver)
-                .build(|| {
-                    ui.text_wrapped("Hello world!");
-                    ui.text_wrapped("こんにちは世界！");
-                    if ui.button(choices[value]) {
-                        value += 1;
-                        value %= 2;
-                    }
+        let gui_image = imgui.draw(
+            0.016,
+            frame.events,
+            frame.window,
+            frame.render_graph,
+            |ui| {
+                ui.window("Hello world")
+                    .position([10.0, 10.0], Condition::FirstUseEver)
+                    .size([340.0, 250.0], Condition::FirstUseEver)
+                    .build(|| {
+                        ui.text_wrapped("Hello world!");
+                        ui.text_wrapped("こんにちは世界！");
+                        if ui.button(choices[value]) {
+                            value += 1;
+                            value %= 2;
+                        }
 
-                    ui.button("This...is...imgui-rs!");
-                    ui.separator();
-                    let mouse_pos = ui.io().mouse_pos;
-                    ui.text(format!(
-                        "Mouse Position: ({:.1},{:.1})",
-                        mouse_pos[0], mouse_pos[1]
-                    ));
-                });
-        });
+                        ui.button("This...is...imgui-rs!");
+                        ui.separator();
+                        let mouse_pos = ui.io().mouse_pos;
+                        ui.text(format!(
+                            "Mouse Position: ({:.1},{:.1})",
+                            mouse_pos[0], mouse_pos[1]
+                        ));
+                    });
+            },
+        );
 
         // Present "gui_image" on top of "app_image" onto "frame.swapchain"
         display.present_images(
@@ -71,4 +82,11 @@ fn main() -> Result<(), DisplayError> {
             frame.swapchain_image,
         );
     })
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

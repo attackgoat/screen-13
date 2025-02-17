@@ -25,19 +25,18 @@ pub(crate) struct AttachmentInfo {
     pub final_layout: vk::ImageLayout,
 }
 
-impl AttachmentInfo {
-    pub fn into_vk(self) -> vk::AttachmentDescription2 {
-        vk::AttachmentDescription2::builder()
-            .flags(self.flags)
-            .format(self.fmt)
-            .samples(self.sample_count.into_vk())
-            .load_op(self.load_op)
-            .store_op(self.store_op)
-            .stencil_load_op(self.stencil_load_op)
-            .stencil_store_op(self.stencil_store_op)
-            .initial_layout(self.initial_layout)
-            .final_layout(self.final_layout)
-            .build()
+impl From<AttachmentInfo> for vk::AttachmentDescription2<'_> {
+    fn from(value: AttachmentInfo) -> Self {
+        vk::AttachmentDescription2::default()
+            .flags(value.flags)
+            .format(value.fmt)
+            .samples(value.sample_count.into())
+            .load_op(value.load_op)
+            .store_op(value.store_op)
+            .stencil_load_op(value.stencil_load_op)
+            .stencil_store_op(value.stencil_store_op)
+            .initial_layout(value.initial_layout)
+            .final_layout(value.final_layout)
     }
 }
 
@@ -64,12 +63,12 @@ pub(crate) struct AttachmentRef {
     pub layout: vk::ImageLayout,
 }
 
-impl AttachmentRef {
-    fn into_vk(self) -> vk::AttachmentReference2Builder<'static> {
-        vk::AttachmentReference2::builder()
-            .attachment(self.attachment)
-            .aspect_mask(self.aspect_mask)
-            .layout(self.layout)
+impl From<AttachmentRef> for vk::AttachmentReference2<'_> {
+    fn from(attachment_ref: AttachmentRef) -> Self {
+        vk::AttachmentReference2::default()
+            .attachment(attachment_ref.attachment)
+            .aspect_mask(attachment_ref.aspect_mask)
+            .layout(attachment_ref.layout)
     }
 }
 
@@ -86,8 +85,6 @@ pub(crate) struct FramebufferAttachmentImageInfo {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct FramebufferInfo {
     pub attachments: Vec<FramebufferAttachmentImageInfo>,
-    pub width: u32,
-    pub height: u32,
 }
 
 #[derive(Debug, Eq, Hash, PartialEq)]
@@ -124,34 +121,75 @@ impl RenderPass {
         let attachments = info
             .attachments
             .iter()
-            .map(|attachment| attachment.into_vk())
+            .copied()
+            .map(Into::into)
             .collect::<Box<[_]>>();
+        let correlated_view_masks = info
+            .subpasses
+            .iter()
+            .any(|subpass| subpass.view_mask != 0)
+            .then(|| {
+                info.subpasses
+                    .iter()
+                    .map(|subpass| subpass.correlated_view_mask)
+                    .collect::<Box<_>>()
+            })
+            .unwrap_or_default();
         let dependencies = info
             .dependencies
             .iter()
-            .map(|dependency| dependency.into_vk())
+            .copied()
+            .map(Into::into)
             .collect::<Box<[_]>>();
 
-        // These vecs must stay alive and not be resized until the create function completes!
-        let mut subpass_attachments = Vec::with_capacity(
-            info.subpasses
-                .iter()
-                .map(|subpass| {
-                    subpass.color_attachments.len() * 2
-                        + subpass.input_attachments.len()
-                        + subpass.depth_stencil_attachment.is_some() as usize
-                        + subpass.depth_stencil_resolve_attachment.is_some() as usize
-                })
-                .sum(),
-        );
+        let subpass_attachments = info
+            .subpasses
+            .iter()
+            .flat_map(|subpass| {
+                subpass
+                    .color_attachments
+                    .iter()
+                    .chain(subpass.input_attachments.iter())
+                    .chain(subpass.color_resolve_attachments.iter())
+                    .chain(subpass.depth_stencil_attachment.iter())
+                    .chain(
+                        subpass
+                            .depth_stencil_resolve_attachment
+                            .as_ref()
+                            .map(|(resolve_attachment, _, _)| resolve_attachment)
+                            .into_iter(),
+                    )
+                    .copied()
+                    .map(AttachmentRef::into)
+            })
+            .collect::<Box<[vk::AttachmentReference2]>>();
+        let mut subpass_depth_stencil_resolves = info
+            .subpasses
+            .iter()
+            .map(|subpass| {
+                subpass.depth_stencil_resolve_attachment.map(
+                    |(_, depth_resolve_mode, stencil_resolve_mode)| {
+                        vk::SubpassDescriptionDepthStencilResolve::default()
+                            .depth_stencil_resolve_attachment(subpass_attachments.last().unwrap())
+                            .depth_resolve_mode(
+                                depth_resolve_mode.map(Into::into).unwrap_or_default(),
+                            )
+                            .stencil_resolve_mode(
+                                stencil_resolve_mode.map(Into::into).unwrap_or_default(),
+                            )
+                    },
+                )
+            })
+            .collect::<Box<_>>();
         let mut subpasses = Vec::with_capacity(info.subpasses.len());
-        let mut subpass_depth_stencil_resolves = Vec::with_capacity(info.subpasses.len());
-        let mut has_viewmasks = false;
 
-        for subpass in &info.subpasses {
-            has_viewmasks |= subpass.view_mask != 0;
-
-            let mut subpass_desc = vk::SubpassDescription2::builder()
+        let mut base_idx = 0;
+        for (subpass, depth_stencil_resolve) in info
+            .subpasses
+            .iter()
+            .zip(subpass_depth_stencil_resolves.iter_mut())
+        {
+            let mut desc = vk::SubpassDescription2::default()
                 .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
 
             debug_assert_eq!(
@@ -159,82 +197,48 @@ impl RenderPass {
                 subpass.color_resolve_attachments.len()
             );
 
-            let color_attachments_idx = subpass_attachments.len();
-            let input_attachments_idx = color_attachments_idx + subpass.color_attachments.len();
-            let resolve_color_attachments_idx =
-                input_attachments_idx + subpass.input_attachments.len();
-            subpass_attachments.extend(
-                subpass
-                    .color_attachments
-                    .iter()
-                    .chain(subpass.input_attachments.iter())
-                    .chain(subpass.color_resolve_attachments.iter())
-                    .map(|attachment| attachment.into_vk().build()),
-            );
+            let color_idx = base_idx;
+            let input_idx = color_idx + subpass.color_attachments.len();
+            let color_resolve_idx = input_idx + subpass.input_attachments.len();
+            let depth_stencil_idx = color_resolve_idx + subpass.color_resolve_attachments.len();
+            let depth_stencil_resolve_idx =
+                depth_stencil_idx + subpass.depth_stencil_attachment.is_some() as usize;
+            base_idx = depth_stencil_resolve_idx
+                + subpass.depth_stencil_resolve_attachment.is_some() as usize;
 
-            let resolve_depth_stencil_attachment_idx = subpass_attachments.len();
-            if let Some((resolve_attachment, depth_resolve_mode, stencil_resolve_mode)) =
-                subpass.depth_stencil_resolve_attachment
-            {
-                subpass_attachments.push(resolve_attachment.into_vk().build());
-                subpass_depth_stencil_resolves.push(
-                    vk::SubpassDescriptionDepthStencilResolve::builder()
-                        .depth_stencil_resolve_attachment(subpass_attachments.last().unwrap())
-                        .depth_resolve_mode(ResolveMode::into_vk(depth_resolve_mode))
-                        .stencil_resolve_mode(ResolveMode::into_vk(stencil_resolve_mode))
-                        .build(),
-                );
-
-                subpass_desc =
-                    subpass_desc.push_next(subpass_depth_stencil_resolves.last_mut().unwrap());
+            if subpass.depth_stencil_attachment.is_some() {
+                desc = desc.depth_stencil_attachment(&subpass_attachments[depth_stencil_idx]);
             }
 
-            if let Some(depth_stencil_attachment) = subpass.depth_stencil_attachment {
-                subpass_attachments.push(depth_stencil_attachment.into_vk().build());
-                subpass_desc =
-                    subpass_desc.depth_stencil_attachment(subpass_attachments.last().unwrap());
+            if let Some(depth_stencil_resolve) = depth_stencil_resolve {
+                desc = desc.push_next(depth_stencil_resolve);
             }
 
             subpasses.push(
-                subpass_desc
-                    .color_attachments(
-                        &subpass_attachments[color_attachments_idx..input_attachments_idx],
-                    )
-                    .input_attachments(
-                        &subpass_attachments[input_attachments_idx..resolve_color_attachments_idx],
-                    )
-                    .resolve_attachments(
-                        &subpass_attachments
-                            [resolve_color_attachments_idx..resolve_depth_stencil_attachment_idx],
-                    )
+                desc.color_attachments(&subpass_attachments[color_idx..input_idx])
+                    .input_attachments(&subpass_attachments[input_idx..color_resolve_idx])
+                    .resolve_attachments(&subpass_attachments[color_resolve_idx..depth_stencil_idx])
                     .preserve_attachments(&subpass.preserve_attachments)
-                    .view_mask(subpass.view_mask)
-                    .build(),
+                    .view_mask(subpass.view_mask),
             );
         }
 
-        let correlated_view_masks = if has_viewmasks {
-            info.subpasses
-                .iter()
-                .map(|subpass| subpass.correlated_view_mask)
-                .collect::<Box<_>>()
-        } else {
-            Box::new([])
-        };
-
         let render_pass = unsafe {
-            device.create_render_pass2(
-                &vk::RenderPassCreateInfo2::builder()
-                    .flags(vk::RenderPassCreateFlags::empty())
-                    .attachments(&attachments)
-                    .dependencies(&dependencies)
-                    .subpasses(&subpasses)
-                    .correlated_view_masks(&correlated_view_masks),
-                None,
-            )
-        };
+            device
+                .create_render_pass2(
+                    &vk::RenderPassCreateInfo2::default()
+                        .attachments(&attachments)
+                        .correlated_view_masks(&correlated_view_masks)
+                        .dependencies(&dependencies)
+                        .subpasses(&subpasses),
+                    None,
+                )
+                .map_err(|err| {
+                    warn!("{err}");
 
-        let render_pass = render_pass.map_err(|_| DriverError::InvalidData)?;
+                    DriverError::Unsupported
+                })?
+        };
 
         Ok(Self {
             info,
@@ -273,23 +277,22 @@ impl RenderPass {
             .attachments
             .iter()
             .map(|attachment| {
-                vk::FramebufferAttachmentImageInfo::builder()
+                vk::FramebufferAttachmentImageInfo::default()
                     .flags(attachment.flags)
                     .width(attachment.width)
                     .height(attachment.height)
                     .layer_count(attachment.layer_count)
                     .usage(attachment.usage)
                     .view_formats(&attachment.view_formats)
-                    .build()
             })
             .collect::<Box<[_]>>();
         let mut imageless_info =
-            vk::FramebufferAttachmentsCreateInfoKHR::builder().attachment_image_infos(&attachments);
-        let mut create_info = vk::FramebufferCreateInfo::builder()
+            vk::FramebufferAttachmentsCreateInfoKHR::default().attachment_image_infos(&attachments);
+        let mut create_info = vk::FramebufferCreateInfo::default()
             .flags(vk::FramebufferCreateFlags::IMAGELESS)
             .render_pass(this.render_pass)
-            .width(key.width)
-            .height(key.height)
+            .width(attachments[0].width)
+            .height(attachments[0].height)
             .layers(layers)
             .push_next(&mut imageless_info);
         create_info.attachment_count = this.info.attachments.len() as _;
@@ -338,50 +341,58 @@ impl RenderPass {
             .iter()
             .map(|_| pipeline.info.blend.into_vk())
             .collect::<Box<[_]>>();
-        let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
+        let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
             .attachments(&color_blend_attachment_states);
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic_state =
-            vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_states);
-        let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+        let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
             .alpha_to_coverage_enable(pipeline.state.multisample.alpha_to_coverage_enable)
             .alpha_to_one_enable(pipeline.state.multisample.alpha_to_one_enable)
             .flags(pipeline.state.multisample.flags)
             .min_sample_shading(pipeline.state.multisample.min_sample_shading)
-            .rasterization_samples(pipeline.state.multisample.rasterization_samples.into_vk())
+            .rasterization_samples(pipeline.state.multisample.rasterization_samples.into())
             .sample_shading_enable(pipeline.state.multisample.sample_shading_enable)
             .sample_mask(&pipeline.state.multisample.sample_mask);
-        let mut specializations = Vec::with_capacity(pipeline.state.stages.len());
-        let stages = pipeline
+        let specializations = pipeline
             .state
             .stages
             .iter()
             .map(|stage| {
-                let mut info = vk::PipelineShaderStageCreateInfo::builder()
+                stage
+                    .specialization_info
+                    .as_ref()
+                    .map(|specialization_info| {
+                        vk::SpecializationInfo::default()
+                            .map_entries(&specialization_info.map_entries)
+                            .data(&specialization_info.data)
+                    })
+            })
+            .collect::<Box<_>>();
+        let stages = pipeline
+            .state
+            .stages
+            .iter()
+            .zip(specializations.iter())
+            .map(|(stage, specialization)| {
+                let mut info = vk::PipelineShaderStageCreateInfo::default()
                     .module(stage.module)
                     .name(&stage.name)
                     .stage(stage.flags);
 
-                if let Some(specialization_info) = &stage.specialization_info {
-                    specializations.push(
-                        vk::SpecializationInfo::builder()
-                            .map_entries(&specialization_info.map_entries)
-                            .data(&specialization_info.data)
-                            .build(),
-                    );
-
-                    info = info.specialization_info(specializations.last().unwrap());
+                if let Some(specialization) = specialization {
+                    info = info.specialization_info(specialization);
                 }
 
-                info.build()
+                info
             })
             .collect::<Box<[_]>>();
-        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::builder()
+        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_attribute_descriptions(
                 &pipeline.state.vertex_input.vertex_attribute_descriptions,
             )
             .vertex_binding_descriptions(&pipeline.state.vertex_input.vertex_binding_descriptions);
-        let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
+        let viewport_state = vk::PipelineViewportStateCreateInfo::default()
             .viewport_count(1)
             .scissor_count(1);
         let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo {
@@ -398,7 +409,7 @@ impl RenderPass {
             cull_mode: pipeline.info.cull_mode,
             ..Default::default()
         };
-        let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
+        let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .color_blend_state(&color_blend_state)
             .depth_stencil_state(&depth_stencil)
             .dynamic_state(&dynamic_state)
@@ -414,7 +425,7 @@ impl RenderPass {
 
         let pipeline = unsafe {
             this.device.create_graphics_pipelines(
-                vk::PipelineCache::null(),
+                Device::pipeline_cache(&this.device),
                 from_ref(&graphic_pipeline_info),
                 None,
             )
@@ -422,7 +433,7 @@ impl RenderPass {
         .map_err(|(_, err)| {
             warn!(
                 "create_graphics_pipelines: {err}\n{:#?}",
-                graphic_pipeline_info.build()
+                graphic_pipeline_info
             );
 
             DriverError::Unsupported
@@ -479,14 +490,13 @@ pub enum ResolveMode {
     SampleZero,
 }
 
-impl ResolveMode {
-    fn into_vk(mode: Option<ResolveMode>) -> vk::ResolveModeFlags {
+impl From<ResolveMode> for vk::ResolveModeFlags {
+    fn from(mode: ResolveMode) -> Self {
         match mode {
-            None => vk::ResolveModeFlags::NONE,
-            Some(ResolveMode::Average) => vk::ResolveModeFlags::AVERAGE,
-            Some(ResolveMode::Maximum) => vk::ResolveModeFlags::MAX,
-            Some(ResolveMode::Minimum) => vk::ResolveModeFlags::MIN,
-            Some(ResolveMode::SampleZero) => vk::ResolveModeFlags::SAMPLE_ZERO,
+            ResolveMode::Average => vk::ResolveModeFlags::AVERAGE,
+            ResolveMode::Maximum => vk::ResolveModeFlags::MAX,
+            ResolveMode::Minimum => vk::ResolveModeFlags::MIN,
+            ResolveMode::SampleZero => vk::ResolveModeFlags::SAMPLE_ZERO,
         }
     }
 }
@@ -514,17 +524,18 @@ impl SubpassDependency {
             dependency_flags: vk::DependencyFlags::empty(),
         }
     }
+}
 
-    pub fn into_vk(self) -> vk::SubpassDependency2 {
-        vk::SubpassDependency2::builder()
-            .src_subpass(self.src_subpass)
-            .dst_subpass(self.dst_subpass)
-            .src_stage_mask(self.src_stage_mask)
-            .dst_stage_mask(self.dst_stage_mask)
-            .src_access_mask(self.src_access_mask)
-            .dst_access_mask(self.dst_access_mask)
-            .dependency_flags(self.dependency_flags)
-            .build()
+impl From<SubpassDependency> for vk::SubpassDependency2<'_> {
+    fn from(value: SubpassDependency) -> Self {
+        vk::SubpassDependency2::default()
+            .src_subpass(value.src_subpass)
+            .dst_subpass(value.dst_subpass)
+            .src_stage_mask(value.src_stage_mask)
+            .dst_stage_mask(value.dst_stage_mask)
+            .src_access_mask(value.src_access_mask)
+            .dst_access_mask(value.dst_access_mask)
+            .dependency_flags(value.dependency_flags)
     }
 }
 

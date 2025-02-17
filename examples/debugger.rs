@@ -23,8 +23,8 @@
 
     To continue, uncomment line 30.
 */
-fn main() -> Result<(), screen_13::DisplayError> {
-    use {screen_13::prelude::*, std::sync::Arc};
+fn main() -> Result<(), screen_13_window::WindowError> {
+    use {log::debug, screen_13::prelude::*, screen_13_window::Window, std::sync::Arc};
 
     // 👋, 🌎!
     //pretty_env_logger::init();
@@ -36,7 +36,7 @@ fn main() -> Result<(), screen_13::DisplayError> {
             - If you did not install the SDK, you must goto line 8, above.
             - If you have a recent SDK installed, you may advance the function pointer.
     */
-    EventLoop::new().debug(true).build()?.run(|frame| {
+    Window::builder().debug(true).build()?.run(|frame| {
         /*
             You have now entered the per-frame callback. Everything is happening *so* fast. We just
             executed line two of our program!
@@ -119,7 +119,7 @@ fn main() -> Result<(), screen_13::DisplayError> {
                     u32::MAX,
                     u32::MAX,
                     vk::Format::UNDEFINED,
-                    vk::ImageUsageFlags::RESERVED_22_EXT,
+                    vk::ImageUsageFlags::default(),
                 ),
             )
             .unwrap(),

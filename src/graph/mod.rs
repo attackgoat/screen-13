@@ -31,13 +31,12 @@ use {
     },
     crate::driver::{
         buffer::Buffer,
-        buffer_copy_subresources, buffer_image_copy_subresource,
         compute::ComputePipeline,
         device::Device,
-        format_aspect_mask,
+        format_aspect_mask, format_texel_block_size,
         graphic::{DepthStencilMode, GraphicPipeline},
         image::{ImageType, ImageViewInfo, SampleCount},
-        is_write_access,
+        image_subresource_range_from_layers,
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
         shader::PipelineDescriptorInfo,
@@ -80,16 +79,12 @@ struct Attachment {
 impl Attachment {
     fn new(image_view_info: ImageViewInfo, sample_count: SampleCount, target: NodeIndex) -> Self {
         Self {
-            array_layer_count: image_view_info
-                .array_layer_count
-                .unwrap_or(vk::REMAINING_ARRAY_LAYERS),
+            array_layer_count: image_view_info.array_layer_count,
             aspect_mask: image_view_info.aspect_mask,
             base_array_layer: image_view_info.base_array_layer,
             base_mip_level: image_view_info.base_mip_level,
             format: image_view_info.fmt,
-            mip_level_count: image_view_info
-                .mip_level_count
-                .unwrap_or(vk::REMAINING_MIP_LEVELS),
+            mip_level_count: image_view_info.mip_level_count,
             sample_count,
             target,
         }
@@ -121,30 +116,44 @@ impl Attachment {
 #[derive(Clone, Copy, Debug)]
 pub struct ClearColorValue(pub [f32; 4]);
 
+impl From<[f32; 3]> for ClearColorValue {
+    fn from(color: [f32; 3]) -> Self {
+        [color[0], color[1], color[2], 1.0].into()
+    }
+}
+
 impl From<[f32; 4]> for ClearColorValue {
     fn from(color: [f32; 4]) -> Self {
         Self(color)
     }
 }
 
+impl From<[u8; 3]> for ClearColorValue {
+    fn from(color: [u8; 3]) -> Self {
+        [color[0], color[1], color[2], u8::MAX].into()
+    }
+}
+
 impl From<[u8; 4]> for ClearColorValue {
     fn from(color: [u8; 4]) -> Self {
-        Self([
+        [
             color[0] as f32 / u8::MAX as f32,
             color[1] as f32 / u8::MAX as f32,
             color[2] as f32 / u8::MAX as f32,
             color[3] as f32 / u8::MAX as f32,
-        ])
+        ]
+        .into()
     }
 }
 
 #[derive(Default)]
 struct Execution {
-    accesses: HashMap<NodeIndex, [SubresourceAccess; 2]>,
+    accesses: HashMap<NodeIndex, Vec<SubresourceAccess>>,
     bindings: BTreeMap<Descriptor, (NodeIndex, Option<ViewType>)>,
 
     correlated_view_mask: u32,
     depth_stencil: Option<DepthStencilMode>,
+    render_area: Option<Area>,
     view_mask: u32,
 
     color_attachments: HashMap<AttachmentIndex, Attachment>,
@@ -255,7 +264,6 @@ impl Clone for ExecutionPipeline {
 struct Pass {
     execs: Vec<Execution>,
     name: String,
-    render_area: Option<Area>,
 }
 
 impl Pass {
@@ -379,7 +387,7 @@ impl RenderGraph {
         filter: vk::Filter,
         region: vk::ImageBlit,
     ) -> &mut Self {
-        self.blit_image_regions(src_node, dst_node, filter, vec![region])
+        self.blit_image_regions(src_node, dst_node, filter, [region])
     }
 
     /// Copy regions of an image, potentially performing format conversion.
@@ -393,24 +401,40 @@ impl RenderGraph {
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let src_access_range = self.node_info(src_node).default_view_info();
-        let dst_access_range = self.node_info(dst_node).default_view_info();
 
-        self.begin_pass("blit image")
-            .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
-            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
-            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
+        let mut pass = self.begin_pass("blit image");
+
+        for region in regions.as_ref() {
+            pass = pass
+                .access_node_subrange(
+                    src_node,
+                    AccessType::TransferRead,
+                    image_subresource_range_from_layers(region.src_subresource),
+                )
+                .access_node_subrange(
+                    dst_node,
+                    AccessType::TransferWrite,
+                    image_subresource_range_from_layers(region.dst_subresource),
+                );
+        }
+
+        pass.record_cmd_buf(move |device, cmd_buf, bindings| {
+            let src_image = *bindings[src_node];
+            let dst_image = *bindings[dst_node];
+
+            unsafe {
                 device.cmd_blit_image(
                     cmd_buf,
-                    *bindings[src_node],
+                    src_image,
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                    *bindings[dst_node],
+                    dst_image,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     regions.as_ref(),
                     filter,
                 );
-            })
-            .submit_pass()
+            }
+        })
+        .submit_pass()
     }
 
     /// Clear a color image.
@@ -428,10 +452,10 @@ impl RenderGraph {
         let color_value = color_value.into();
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
-        let image_access_range = image_info.default_view_info();
+        let image_view_info = image_info.default_view_info();
 
         self.begin_pass("clear color")
-            .access_node_subrange(image_node, AccessType::TransferWrite, image_access_range)
+            .access_node_subrange(image_node, AccessType::TransferWrite, image_view_info)
             .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_clear_color_image(
                     cmd_buf,
@@ -440,12 +464,7 @@ impl RenderGraph {
                     &vk::ClearColorValue {
                         float32: color_value.0,
                     },
-                    &[vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        level_count: image_info.mip_level_count,
-                        layer_count: image_info.array_elements,
-                        ..Default::default()
-                    }],
+                    &[image_view_info.into()],
                 );
             })
             .submit_pass()
@@ -466,22 +485,17 @@ impl RenderGraph {
     ) -> &mut Self {
         let image_node = image_node.into();
         let image_info = self.node_info(image_node);
-        let image_access_range = image_info.default_view_info();
+        let image_view_info = image_info.default_view_info();
 
         self.begin_pass("clear depth/stencil")
-            .access_node_subrange(image_node, AccessType::TransferWrite, image_access_range)
+            .access_node_subrange(image_node, AccessType::TransferWrite, image_view_info)
             .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
                 device.cmd_clear_depth_stencil_image(
                     cmd_buf,
                     *bindings[image_node],
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &vk::ClearDepthStencilValue { depth, stencil },
-                    &[vk::ImageSubresourceRange {
-                        aspect_mask: format_aspect_mask(image_info.fmt),
-                        level_count: image_info.mip_level_count,
-                        layer_count: image_info.array_elements,
-                        ..Default::default()
-                    }],
+                    &[image_view_info.into()],
                 );
             })
             .submit_pass()
@@ -516,7 +530,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyBufferNode>,
         region: vk::BufferCopy,
     ) -> &mut Self {
-        self.copy_buffer_regions(src_node, dst_node, vec![region])
+        self.copy_buffer_regions(src_node, dst_node, [region])
     }
 
     /// Copy data between buffer regions.
@@ -529,20 +543,49 @@ impl RenderGraph {
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let (src_access_range, dst_access_range) = buffer_copy_subresources(regions.as_ref());
 
-        self.begin_pass("copy buffer")
-            .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
-            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
-            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
-                device.cmd_copy_buffer(
-                    cmd_buf,
-                    *bindings[src_node],
-                    *bindings[dst_node],
-                    regions.as_ref(),
+        #[cfg(debug_assertions)]
+        let (src_size, dst_size) = (self.node_info(src_node).size, self.node_info(dst_node).size);
+
+        let mut pass = self.begin_pass("copy buffer");
+
+        for region in regions.as_ref() {
+            #[cfg(debug_assertions)]
+            {
+                assert!(
+                    region.src_offset + region.size <= src_size,
+                    "source range end ({}) exceeds source size ({src_size})",
+                    region.src_offset + region.size
                 );
-            })
-            .submit_pass()
+                assert!(
+                    region.dst_offset + region.size <= dst_size,
+                    "destination range end ({}) exceeds destination size ({dst_size})",
+                    region.dst_offset + region.size
+                );
+            };
+
+            pass = pass
+                .access_node_subrange(
+                    src_node,
+                    AccessType::TransferRead,
+                    region.src_offset..region.src_offset + region.size,
+                )
+                .access_node_subrange(
+                    dst_node,
+                    AccessType::TransferWrite,
+                    region.dst_offset..region.dst_offset + region.size,
+                );
+        }
+
+        pass.record_cmd_buf(move |device, cmd_buf, bindings| {
+            let src_buf = *bindings[src_node];
+            let dst_buf = *bindings[dst_node];
+
+            unsafe {
+                device.cmd_copy_buffer(cmd_buf, src_buf, dst_buf, regions.as_ref());
+            }
+        })
+        .submit_pass()
     }
 
     /// Copy data from a buffer into an image.
@@ -584,7 +627,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyImageNode>,
         region: vk::BufferImageCopy,
     ) -> &mut Self {
-        self.copy_buffer_to_image_regions(src_node, dst_node, vec![region])
+        self.copy_buffer_to_image_regions(src_node, dst_node, [region])
     }
 
     /// Copy data from a buffer into an image.
@@ -597,22 +640,44 @@ impl RenderGraph {
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let dst_access_range = self.node_info(dst_node).default_view_info();
-        let src_access_range = buffer_image_copy_subresource(regions.as_ref());
+        let dst_info = self.node_info(dst_node);
 
-        self.begin_pass("copy buffer to image")
-            .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
-            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
-            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
+        let mut pass = self.begin_pass("copy buffer to image");
+
+        for region in regions.as_ref() {
+            pass = pass
+                .access_node_subrange(
+                    src_node,
+                    AccessType::TransferRead,
+                    region.buffer_offset
+                        ..region.buffer_offset
+                            + (region.buffer_row_length
+                                * format_texel_block_size(dst_info.fmt)
+                                * region.buffer_image_height)
+                                as vk::DeviceSize,
+                )
+                .access_node_subrange(
+                    dst_node,
+                    AccessType::TransferWrite,
+                    image_subresource_range_from_layers(region.image_subresource),
+                );
+        }
+
+        pass.record_cmd_buf(move |device, cmd_buf, bindings| {
+            let src_buf = *bindings[src_node];
+            let dst_image = *bindings[dst_node];
+
+            unsafe {
                 device.cmd_copy_buffer_to_image(
                     cmd_buf,
-                    *bindings[src_node],
-                    *bindings[dst_node],
+                    src_buf,
+                    dst_image,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     regions.as_ref(),
                 );
-            })
-            .submit_pass()
+            }
+        })
+        .submit_pass()
     }
 
     /// Copy data between images.
@@ -622,9 +687,9 @@ impl RenderGraph {
         dst_node: impl Into<AnyImageNode>,
     ) -> &mut Self {
         let src_node = src_node.into();
-        let dst_node = dst_node.into();
-
         let src_info = self.node_info(src_node);
+
+        let dst_node = dst_node.into();
         let dst_info = self.node_info(dst_node);
 
         self.copy_image_region(
@@ -669,7 +734,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyImageNode>,
         region: vk::ImageCopy,
     ) -> &mut Self {
-        self.copy_image_regions(src_node, dst_node, vec![region])
+        self.copy_image_regions(src_node, dst_node, [region])
     }
 
     /// Copy data between images.
@@ -682,23 +747,39 @@ impl RenderGraph {
     ) -> &mut Self {
         let src_node = src_node.into();
         let dst_node = dst_node.into();
-        let src_access_range = self.node_info(src_node).default_view_info();
-        let dst_access_range = self.node_info(dst_node).default_view_info();
 
-        self.begin_pass("copy image")
-            .access_node_subrange(src_node, AccessType::TransferRead, src_access_range)
-            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_access_range)
-            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
+        let mut pass = self.begin_pass("copy image");
+
+        for region in regions.as_ref() {
+            pass = pass
+                .access_node_subrange(
+                    src_node,
+                    AccessType::TransferRead,
+                    image_subresource_range_from_layers(region.src_subresource),
+                )
+                .access_node_subrange(
+                    dst_node,
+                    AccessType::TransferWrite,
+                    image_subresource_range_from_layers(region.dst_subresource),
+                );
+        }
+
+        pass.record_cmd_buf(move |device, cmd_buf, bindings| {
+            let src_image = *bindings[src_node];
+            let dst_image = *bindings[dst_node];
+
+            unsafe {
                 device.cmd_copy_image(
                     cmd_buf,
-                    *bindings[src_node],
+                    src_image,
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                    *bindings[dst_node],
+                    dst_image,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     regions.as_ref(),
                 );
-            })
-            .submit_pass()
+            }
+        })
+        .submit_pass()
     }
 
     /// Copy image data into a buffer.
@@ -742,7 +823,7 @@ impl RenderGraph {
         dst_node: impl Into<AnyBufferNode>,
         region: vk::BufferImageCopy,
     ) -> &mut Self {
-        self.copy_image_to_buffer_regions(src_node, dst_node, vec![region])
+        self.copy_image_to_buffer_regions(src_node, dst_node, [region])
     }
 
     /// Copy image data into a buffer.
@@ -754,23 +835,45 @@ impl RenderGraph {
         regions: impl AsRef<[vk::BufferImageCopy]> + 'static + Send,
     ) -> &mut Self {
         let src_node = src_node.into();
+        let src_info = self.node_info(src_node);
         let dst_node = dst_node.into();
-        let src_subresource = self.node_info(src_node).default_view_info();
-        let dst_subresource = buffer_image_copy_subresource(regions.as_ref());
 
-        self.begin_pass("copy image to buffer")
-            .access_node_subrange(src_node, AccessType::TransferRead, src_subresource)
-            .access_node_subrange(dst_node, AccessType::TransferWrite, dst_subresource)
-            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
+        let mut pass = self.begin_pass("copy image to buffer");
+
+        for region in regions.as_ref() {
+            pass = pass
+                .access_node_subrange(
+                    src_node,
+                    AccessType::TransferRead,
+                    image_subresource_range_from_layers(region.image_subresource),
+                )
+                .access_node_subrange(
+                    dst_node,
+                    AccessType::TransferWrite,
+                    region.buffer_offset
+                        ..region.buffer_offset
+                            + (region.buffer_row_length
+                                * format_texel_block_size(src_info.fmt)
+                                * region.buffer_image_height)
+                                as vk::DeviceSize,
+                );
+        }
+
+        pass.record_cmd_buf(move |device, cmd_buf, bindings| {
+            let src_image = *bindings[src_node];
+            let dst_buf = *bindings[dst_node];
+
+            unsafe {
                 device.cmd_copy_image_to_buffer(
                     cmd_buf,
-                    *bindings[src_node],
+                    src_image,
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                    *bindings[dst_node],
+                    dst_buf,
                     regions.as_ref(),
                 );
-            })
-            .submit_pass()
+            }
+        })
+        .submit_pass()
     }
 
     /// Fill a region of a buffer with a fixed value.
@@ -791,40 +894,23 @@ impl RenderGraph {
         region: Range<vk::DeviceSize>,
     ) -> &mut Self {
         let buffer_node = buffer_node.into();
-        let buffer_info = self.node_info(buffer_node);
-        let buffer_access_range = 0..buffer_info.size;
 
         self.begin_pass("fill buffer")
-            .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)
-            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
-                device.cmd_fill_buffer(
-                    cmd_buf,
-                    *bindings[buffer_node],
-                    region.start,
-                    region.end - region.start,
-                    data,
-                );
+            .access_node_subrange(buffer_node, AccessType::TransferWrite, region.clone())
+            .record_cmd_buf(move |device, cmd_buf, bindings| {
+                let buffer = *bindings[buffer_node];
+
+                unsafe {
+                    device.cmd_fill_buffer(
+                        cmd_buf,
+                        buffer,
+                        region.start,
+                        region.end - region.start,
+                        data,
+                    );
+                }
             })
             .submit_pass()
-    }
-
-    #[profiling::function]
-    pub(super) fn last_write(&self, node: impl Node) -> Option<AccessType> {
-        let node_idx = node.index();
-
-        self.passes
-            .iter()
-            .rev()
-            .flat_map(|pass| pass.execs.iter().rev())
-            .find_map(|exec| {
-                exec.accesses.get(&node_idx).and_then(|[_early, late]| {
-                    if is_write_access(late.access) {
-                        Some(late.access)
-                    } else {
-                        None
-                    }
-                })
-            })
     }
 
     /// Returns the index of the first pass which accesses a given node
@@ -905,13 +991,27 @@ impl RenderGraph {
         data: impl AsRef<[u8]> + 'static + Send,
     ) -> &mut Self {
         let buffer_node = buffer_node.into();
-        let buffer_info = self.node_info(buffer_node);
-        let buffer_access_range = 0..buffer_info.size;
+        let data_end = offset + data.as_ref().len() as vk::DeviceSize;
+
+        #[cfg(debug_assertions)]
+        {
+            let buffer_info = self.node_info(buffer_node);
+
+            assert!(
+                data_end <= buffer_info.size,
+                "data range end ({data_end}) exceeds buffer size ({})",
+                buffer_info.size
+            );
+        }
 
         self.begin_pass("update buffer")
-            .access_node_subrange(buffer_node, AccessType::TransferWrite, buffer_access_range)
-            .record_cmd_buf(move |device, cmd_buf, bindings| unsafe {
-                device.cmd_update_buffer(cmd_buf, *bindings[buffer_node], offset, data.as_ref());
+            .access_node_subrange(buffer_node, AccessType::TransferWrite, offset..data_end)
+            .record_cmd_buf(move |device, cmd_buf, bindings| {
+                let buffer = *bindings[buffer_node];
+
+                unsafe {
+                    device.cmd_update_buffer(cmd_buf, buffer, offset, data.as_ref());
+                }
             })
             .submit_pass()
     }

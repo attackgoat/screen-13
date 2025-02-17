@@ -2,9 +2,11 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{cast_slice, Pod, Zeroable},
+    clap::Parser,
     half::f16,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
+    screen_13_window::{FrameContext, WindowBuilder},
     std::{mem::size_of, sync::Arc},
 };
 
@@ -14,16 +16,17 @@ use {
 ///
 /// Most hardware will support 64 bit values, so we first check for support and if that fails
 /// we fall back to 16 bit values.
-fn main() -> Result<(), DisplayError> {
+fn main() -> anyhow::Result<()> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
     // NOTE: This example uses the 64-bit rules defined in the Vulkan spec, they're not obvious:
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#fxvertex-attrib
 
-    let event_loop = EventLoop::new().build()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
 
-    let f16_pipeline = create_f16_pipeline(&event_loop.device).ok();
+    let f16_pipeline = create_f16_pipeline(&window.device).ok();
     let f16_vertex_buf = {
         #[repr(C)]
         #[derive(Clone, Copy, Pod, Zeroable)]
@@ -32,7 +35,7 @@ fn main() -> Result<(), DisplayError> {
         let vec2 = |x, y| [f16::from_f32(x), f16::from_f32(y)];
 
         Arc::new(Buffer::create_from_slice(
-            &event_loop.device,
+            &window.device,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             cast_slice(&[
                 Vertex(vec2(-1.0, -1.0), [1.0, 0.0, 0.0]),
@@ -42,14 +45,14 @@ fn main() -> Result<(), DisplayError> {
         )?)
     };
 
-    let f32_pipeline = create_f32_pipeline(&event_loop.device)?;
+    let f32_pipeline = create_f32_pipeline(&window.device)?;
     let f32_vertex_buf = {
         #[repr(C)]
         #[derive(Clone, Copy, Pod, Zeroable)]
         struct Vertex([f32; 2], [f32; 3]);
 
         Arc::new(Buffer::create_from_slice(
-            &event_loop.device,
+            &window.device,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             cast_slice(&[
                 Vertex([-1f32, -1.0], [1.0, 0.0, 0.0]),
@@ -59,14 +62,14 @@ fn main() -> Result<(), DisplayError> {
         )?)
     };
 
-    let f64_pipeline = create_f64_pipeline(&event_loop.device).ok();
+    let f64_pipeline = create_f64_pipeline(&window.device).ok();
     let f64_vertex_buf = {
         #[repr(C)]
         #[derive(Clone, Copy, Pod, Zeroable)]
         struct Vertex([f64; 2], [f32; 3], u32);
 
         Arc::new(Buffer::create_from_slice(
-            &event_loop.device,
+            &window.device,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             cast_slice(&[
                 Vertex([-1.0, -1.0], [1.0, 0.0, 0.0], 0),
@@ -76,7 +79,7 @@ fn main() -> Result<(), DisplayError> {
         )?)
     };
 
-    event_loop.run(|mut frame| {
+    window.run(|mut frame| {
         draw_triangle(&mut frame, &f32_pipeline, &f32_vertex_buf);
 
         // (Fun fact: Screen 13 turns these two passes into one renderpass with a second subpass!)
@@ -86,7 +89,9 @@ fn main() -> Result<(), DisplayError> {
         } else if let Some(f16_pipeline) = &f16_pipeline {
             draw_triangle(&mut frame, f16_pipeline, &f16_vertex_buf);
         }
-    })
+    })?;
+
+    Ok(())
 }
 
 fn draw_triangle(
@@ -253,4 +258,11 @@ fn supports_vertex_buffer(device: &Device, format: vk::Format) -> bool {
     Device::format_properties(device, format)
         .buffer_features
         .contains(vk::FormatFeatureFlags::VERTEX_BUFFER)
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

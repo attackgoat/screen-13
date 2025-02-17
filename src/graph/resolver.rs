@@ -1,21 +1,22 @@
 use {
     super::{
-        Area, Attachment, Binding, Bindings, Edge, Execution, ExecutionPipeline, Node, Pass,
-        RenderGraph, Unbind,
+        node::SwapchainImageNode,
+        pass_ref::{Subresource, SubresourceAccess},
+        Area, Attachment, Binding, Bindings, ExecutionPipeline, Node, NodeIndex, Pass, RenderGraph,
     },
     crate::{
         driver::{
             accel_struct::AccelerationStructure,
             buffer::Buffer,
-            device::Device,
             format_aspect_mask,
             graphic::DepthStencilMode,
             image::{Image, ImageViewInfo},
-            image_access_layout, is_framebuffer_access, is_read_access, is_write_access,
-            pipeline_stage_access_flags, AttachmentInfo, AttachmentRef, CommandBuffer,
-            CommandBufferInfo, DescriptorBinding, DescriptorInfo, DescriptorPool,
-            DescriptorPoolInfo, DescriptorSet, DriverError, FramebufferAttachmentImageInfo,
-            FramebufferInfo, RenderPass, RenderPassInfo, SubpassDependency, SubpassInfo,
+            image_access_layout, is_read_access, is_write_access, pipeline_stage_access_flags,
+            swapchain::SwapchainImage,
+            AttachmentInfo, AttachmentRef, CommandBuffer, CommandBufferInfo, Descriptor,
+            DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet, DriverError,
+            FramebufferAttachmentImageInfo, FramebufferInfo, RenderPass, RenderPassInfo,
+            SubpassDependency, SubpassInfo,
         },
         pool::{Lease, Pool},
     },
@@ -26,16 +27,12 @@ use {
     },
     std::{
         cell::RefCell,
-        collections::{HashMap, VecDeque},
+        collections::{BTreeMap, HashMap, VecDeque},
         iter::repeat,
         ops::Range,
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
-
-fn align_up(val: u32, atom: u32) -> u32 {
-    (val + atom - 1) & !(atom - 1)
-}
 
 #[derive(Default)]
 struct AccessCache {
@@ -115,12 +112,11 @@ impl AccessCache {
                 let pass_start = pass_idx * self.binding_count;
                 let mut read_count = 0;
 
-                for (&node_idx, [early, _]) in
-                    pass.execs.iter().flat_map(|exec| exec.accesses.iter())
+                for (&node_idx, accesses) in pass.execs.iter().flat_map(|exec| exec.accesses.iter())
                 {
                     self.accesses[pass_start + node_idx] = true;
 
-                    if nodes[node_idx] && is_read_access(early.access) {
+                    if nodes[node_idx] && is_read_access(accesses.first().unwrap().access) {
                         self.reads[pass_start + read_count] = node_idx;
                         nodes[node_idx] = false;
                         read_count += 1;
@@ -443,20 +439,20 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
                         image_views[*attachment_idx as usize] = Image::view(
                             image,
                             ImageViewInfo {
-                                array_layer_count: Some(attachment.array_layer_count),
+                                array_layer_count: attachment.array_layer_count,
                                 aspect_mask: attachment.aspect_mask,
                                 base_array_layer: attachment.base_array_layer,
                                 base_mip_level: attachment.base_mip_level,
                                 fmt: attachment.format,
-                                mip_level_count: Some(attachment.mip_level_count),
+                                mip_level_count: attachment.mip_level_count,
                                 ty: image.info.ty,
                             },
                         )?;
@@ -481,20 +477,20 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
                         image_views[*attachment_idx as usize] = Image::view(
                             image,
                             ImageViewInfo {
-                                array_layer_count: Some(attachment.array_layer_count),
+                                array_layer_count: attachment.array_layer_count,
                                 aspect_mask: attachment.aspect_mask,
                                 base_array_layer: attachment.base_array_layer,
                                 base_mip_level: attachment.base_mip_level,
                                 fmt: attachment.format,
-                                mip_level_count: Some(attachment.mip_level_count),
+                                mip_level_count: attachment.mip_level_count,
                                 ty: image.info.ty,
                             },
                         )?;
@@ -517,20 +513,20 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
                         image_views[attachment_idx] = Image::view(
                             image,
                             ImageViewInfo {
-                                array_layer_count: Some(attachment.array_layer_count),
+                                array_layer_count: attachment.array_layer_count,
                                 aspect_mask: attachment.aspect_mask,
                                 base_array_layer: attachment.base_array_layer,
                                 base_mip_level: attachment.base_mip_level,
                                 fmt: attachment.format,
-                                mip_level_count: Some(attachment.mip_level_count),
+                                mip_level_count: attachment.mip_level_count,
                                 ty: image.info.ty,
                             },
                         )?;
@@ -553,20 +549,20 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
                         image_views[attachment_idx] = Image::view(
                             image,
                             ImageViewInfo {
-                                array_layer_count: Some(attachment.array_layer_count),
+                                array_layer_count: attachment.array_layer_count,
                                 aspect_mask: attachment.aspect_mask,
                                 base_array_layer: attachment.base_array_layer,
                                 base_mip_level: attachment.base_mip_level,
                                 fmt: attachment.format,
-                                mip_level_count: Some(attachment.mip_level_count),
+                                mip_level_count: attachment.mip_level_count,
                                 ty: image.info.ty,
                             },
                         )?;
@@ -587,20 +583,20 @@ impl Resolver {
 
                         attachment_image.flags = image.info.flags;
                         attachment_image.usage = image.info.usage;
-                        attachment_image.width = image.info.width;
-                        attachment_image.height = image.info.height;
+                        attachment_image.width = image.info.width >> attachment.base_mip_level;
+                        attachment_image.height = image.info.height >> attachment.base_mip_level;
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
                         image_views[attachment_idx] = Image::view(
                             image,
                             ImageViewInfo {
-                                array_layer_count: Some(attachment.array_layer_count),
+                                array_layer_count: attachment.array_layer_count,
                                 aspect_mask: attachment.aspect_mask,
                                 base_array_layer: attachment.base_array_layer,
                                 base_mip_level: attachment.base_mip_level,
                                 fmt: attachment.format,
-                                mip_level_count: Some(attachment.mip_level_count),
+                                mip_level_count: attachment.mip_level_count,
                                 ty: image.info.ty,
                             },
                         )?;
@@ -608,19 +604,13 @@ impl Resolver {
                 }
             }
 
-            let framebuffer = RenderPass::framebuffer(
-                render_pass,
-                FramebufferInfo {
-                    attachments,
-                    width: render_area.width,
-                    height: render_area.height,
-                },
-            )?;
+            let framebuffer =
+                RenderPass::framebuffer(render_pass, FramebufferInfo { attachments })?;
 
             unsafe {
                 cmd_buf.device.cmd_begin_render_pass(
                     **cmd_buf,
-                    &vk::RenderPassBeginInfo::builder()
+                    &vk::RenderPassBeginInfo::default()
                         .render_pass(***render_pass)
                         .framebuffer(framebuffer)
                         .render_area(vk::Rect2D {
@@ -635,7 +625,7 @@ impl Resolver {
                         })
                         .clear_values(clear_values)
                         .push_next(
-                            &mut vk::RenderPassAttachmentBeginInfoKHR::builder()
+                            &mut vk::RenderPassAttachmentBeginInfoKHR::default()
                                 .attachments(image_views),
                         ),
                     vk::SubpassContents::INLINE,
@@ -830,18 +820,22 @@ impl Resolver {
 
         // Trivially round up the descriptor counts to increase cache coherence
         const ATOM: u32 = 1 << 5;
-        info.acceleration_structure_count = align_up(info.acceleration_structure_count, ATOM);
-        info.combined_image_sampler_count = align_up(info.combined_image_sampler_count, ATOM);
-        info.input_attachment_count = align_up(info.input_attachment_count, ATOM);
-        info.sampled_image_count = align_up(info.sampled_image_count, ATOM);
-        info.sampler_count = align_up(info.sampler_count, ATOM);
-        info.storage_buffer_count = align_up(info.storage_buffer_count, ATOM);
-        info.storage_buffer_dynamic_count = align_up(info.storage_buffer_dynamic_count, ATOM);
-        info.storage_image_count = align_up(info.storage_image_count, ATOM);
-        info.storage_texel_buffer_count = align_up(info.storage_texel_buffer_count, ATOM);
-        info.uniform_buffer_count = align_up(info.uniform_buffer_count, ATOM);
-        info.uniform_buffer_dynamic_count = align_up(info.uniform_buffer_dynamic_count, ATOM);
-        info.uniform_texel_buffer_count = align_up(info.uniform_texel_buffer_count, ATOM);
+        info.acceleration_structure_count =
+            info.acceleration_structure_count.next_multiple_of(ATOM);
+        info.combined_image_sampler_count =
+            info.combined_image_sampler_count.next_multiple_of(ATOM);
+        info.input_attachment_count = info.input_attachment_count.next_multiple_of(ATOM);
+        info.sampled_image_count = info.sampled_image_count.next_multiple_of(ATOM);
+        info.sampler_count = info.sampler_count.next_multiple_of(ATOM);
+        info.storage_buffer_count = info.storage_buffer_count.next_multiple_of(ATOM);
+        info.storage_buffer_dynamic_count =
+            info.storage_buffer_dynamic_count.next_multiple_of(ATOM);
+        info.storage_image_count = info.storage_image_count.next_multiple_of(ATOM);
+        info.storage_texel_buffer_count = info.storage_texel_buffer_count.next_multiple_of(ATOM);
+        info.uniform_buffer_count = info.uniform_buffer_count.next_multiple_of(ATOM);
+        info.uniform_buffer_dynamic_count =
+            info.uniform_buffer_dynamic_count.next_multiple_of(ATOM);
+        info.uniform_texel_buffer_count = info.uniform_texel_buffer_count.next_multiple_of(ATOM);
 
         // Notice how all sets are big enough for any other set; TODO: efficiently dont
 
@@ -914,8 +908,7 @@ impl Resolver {
 
         let mut subpasses = Vec::<SubpassInfo>::with_capacity(pass.execs.len());
 
-        // Add attachments: format, sample count, layout, and load ops (using the first
-        // execution)
+        // Add load op attachments using the first execution
         {
             let first_exec = &pass.execs[0];
 
@@ -926,7 +919,6 @@ impl Resolver {
                 attachment.sample_count = cleared_attachment.sample_count;
                 attachment.load_op = vk::AttachmentLoadOp::CLEAR;
                 attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
             }
 
             // Loaded color attachments
@@ -936,25 +928,6 @@ impl Resolver {
                 attachment.sample_count = loaded_attachment.sample_count;
                 attachment.load_op = vk::AttachmentLoadOp::LOAD;
                 attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Resolved color attachments
-            for (dst_attachment_idx, (resolved_attachment, _)) in &first_exec.color_resolves {
-                let attachment = &mut attachments[*dst_attachment_idx as usize];
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Stored color attachments
-            for (attachment_idx, stored_attachment) in &first_exec.color_stores {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-                attachment.final_layout = attachment.initial_layout;
             }
 
             // Cleared depth/stencil attachment
@@ -982,7 +955,6 @@ impl Resolver {
 
                     vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
                 };
-                attachment.final_layout = attachment.initial_layout;
             } else if let Some(loaded_attachment) = first_exec.depth_stencil_load {
                 // Loaded depth/stencil attachment
                 let attachment = &mut attachments[color_attachment_count];
@@ -1008,65 +980,26 @@ impl Resolver {
 
                     vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
                 };
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Stored depth/stencil attachment
-            if let Some(stored_attachment) = first_exec.depth_stencil_store {
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.initial_layout = if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-                attachment.final_layout = attachment.initial_layout;
-            }
-
-            // Resolved depth/stencil attachment
-            if let Some((resolved_attachment, ..)) = first_exec.depth_stencil_resolve {
-                let attachment = attachments.last_mut().unwrap();
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.initial_layout = if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-                attachment.final_layout = attachment.initial_layout;
             }
         }
 
-        // Add attachments: store ops and final layout (using the last pass)
+        // Add store op attachments using the last execution
         {
             let last_exec = pass.execs.last().unwrap();
 
             // Resolved color attachments
-            for attachment_idx in last_exec.color_resolves.keys() {
+            for (attachment_idx, (resolved_attachment, _)) in &last_exec.color_resolves {
                 let attachment = &mut attachments[*attachment_idx as usize];
+                attachment.fmt = resolved_attachment.format;
+                attachment.sample_count = resolved_attachment.sample_count;
                 attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
             }
 
             // Stored color attachments
-            for attachment_idx in last_exec.color_stores.keys() {
+            for (attachment_idx, stored_attachment) in &last_exec.color_stores {
                 let attachment = &mut attachments[*attachment_idx as usize];
+                attachment.fmt = stored_attachment.format;
+                attachment.sample_count = stored_attachment.sample_count;
                 attachment.store_op = vk::AttachmentStoreOp::STORE;
                 attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
             }
@@ -1074,6 +1007,8 @@ impl Resolver {
             // Stored depth/stencil attachment
             if let Some(stored_attachment) = last_exec.depth_stencil_store {
                 let attachment = &mut attachments[color_attachment_count];
+                attachment.fmt = stored_attachment.format;
+                attachment.sample_count = stored_attachment.sample_count;
                 attachment.final_layout = if stored_attachment
                     .aspect_mask
                     .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -1099,6 +1034,8 @@ impl Resolver {
             // Resolved depth/stencil attachment
             if let Some((resolved_attachment, ..)) = last_exec.depth_stencil_resolve {
                 let attachment = attachments.last_mut().unwrap();
+                attachment.fmt = resolved_attachment.format;
+                attachment.sample_count = resolved_attachment.sample_count;
                 attachment.final_layout = if resolved_attachment
                     .aspect_mask
                     .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
@@ -1112,6 +1049,16 @@ impl Resolver {
                 } else {
                     vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
                 };
+            }
+        }
+
+        for attachment in &mut attachments {
+            if attachment.load_op == vk::AttachmentLoadOp::DONT_CARE {
+                attachment.initial_layout = attachment.final_layout;
+            } else if attachment.store_op == vk::AttachmentStoreOp::DONT_CARE
+                && attachment.stencil_store_op == vk::AttachmentStoreOp::DONT_CARE
+            {
+                attachment.final_layout = attachment.initial_layout;
             }
         }
 
@@ -1268,12 +1215,12 @@ impl Resolver {
         // Add dependencies
         let dependencies =
             {
-                let mut dependencies = HashMap::with_capacity(attachment_count);
+                let mut dependencies = BTreeMap::new();
                 for (exec_idx, exec) in pass.execs.iter().enumerate() {
                     // Check accesses
-                    'accesses: for (node_idx, [early, _]) in exec.accesses.iter() {
+                    'accesses: for (node_idx, accesses) in exec.accesses.iter() {
                         let (mut curr_stages, mut curr_access) =
-                            pipeline_stage_access_flags(early.access);
+                            pipeline_stage_access_flags(accesses.first().unwrap().access);
                         if curr_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS) {
                             curr_stages |= vk::PipelineStageFlags::ALL_GRAPHICS;
                             curr_stages &= !vk::PipelineStageFlags::ALL_COMMANDS;
@@ -1283,54 +1230,59 @@ impl Resolver {
                         for (prev_exec_idx, prev_exec) in
                             pass.execs[0..exec_idx].iter().enumerate().rev()
                         {
-                            if let Some([_, late]) = prev_exec.accesses.get(node_idx) {
-                                // Is this previous execution access dependent on anything the current
-                                // execution access is dependent upon?
-                                let (mut prev_stages, prev_access) =
-                                    pipeline_stage_access_flags(late.access);
-                                if prev_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS) {
-                                    prev_stages |= vk::PipelineStageFlags::ALL_GRAPHICS;
-                                    prev_stages &= !vk::PipelineStageFlags::ALL_COMMANDS;
-                                }
+                            if let Some(accesses) = prev_exec.accesses.get(node_idx) {
+                                for &SubresourceAccess { access, .. } in accesses {
+                                    // Is this previous execution access dependent on anything the current
+                                    // execution access is dependent upon?
+                                    let (mut prev_stages, prev_access) =
+                                        pipeline_stage_access_flags(access);
+                                    if prev_stages.contains(vk::PipelineStageFlags::ALL_COMMANDS) {
+                                        prev_stages |= vk::PipelineStageFlags::ALL_GRAPHICS;
+                                        prev_stages &= !vk::PipelineStageFlags::ALL_COMMANDS;
+                                    }
 
-                                let common_stages = curr_stages & prev_stages;
-                                if common_stages.is_empty() {
-                                    // No common dependencies
-                                    continue;
-                                }
+                                    let common_stages = curr_stages & prev_stages;
+                                    if common_stages.is_empty() {
+                                        // No common dependencies
+                                        continue;
+                                    }
 
-                                let dep = dependencies
-                                    .entry((prev_exec_idx, exec_idx))
-                                    .or_insert_with(|| {
-                                        SubpassDependency::new(prev_exec_idx as _, exec_idx as _)
-                                    });
+                                    let dep = dependencies
+                                        .entry((prev_exec_idx, exec_idx))
+                                        .or_insert_with(|| {
+                                            SubpassDependency::new(
+                                                prev_exec_idx as _,
+                                                exec_idx as _,
+                                            )
+                                        });
 
-                                // Wait for ...
-                                dep.src_stage_mask |= common_stages;
-                                dep.src_access_mask |= prev_access;
+                                    // Wait for ...
+                                    dep.src_stage_mask |= common_stages;
+                                    dep.src_access_mask |= prev_access;
 
-                                // ... before we:
-                                dep.dst_stage_mask |= curr_stages;
-                                dep.dst_access_mask |= curr_access;
+                                    // ... before we:
+                                    dep.dst_stage_mask |= curr_stages;
+                                    dep.dst_access_mask |= curr_access;
 
-                                // Do the source and destination stage masks both include
-                                // framebuffer-space stages?
-                                if (prev_stages | curr_stages).intersects(
-                                    vk::PipelineStageFlags::FRAGMENT_SHADER
-                                        | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                                        | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
-                                        | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                                ) {
-                                    dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
-                                }
+                                    // Do the source and destination stage masks both include
+                                    // framebuffer-space stages?
+                                    if (prev_stages | curr_stages).intersects(
+                                        vk::PipelineStageFlags::FRAGMENT_SHADER
+                                            | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                            | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                                            | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                    ) {
+                                        dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
+                                    }
 
-                                curr_stages &= !common_stages;
-                                curr_access &= !prev_access;
+                                    curr_stages &= !common_stages;
+                                    curr_access &= !prev_access;
 
-                                // Have we found all dependencies for this stage? If so no need to
-                                // check external passes
-                                if curr_stages.is_empty() {
-                                    continue 'accesses;
+                                    // Have we found all dependencies for this stage? If so no need to
+                                    // check external passes
+                                    if curr_stages.is_empty() {
+                                        continue 'accesses;
+                                    }
                                 }
                             }
                         }
@@ -1341,53 +1293,55 @@ impl Resolver {
                             .rev()
                             .flat_map(|pass| pass.execs.iter().rev())
                         {
-                            if let Some([_, late]) = prev_subpass.accesses.get(node_idx) {
-                                // Is this previous subpass access dependent on anything the current
-                                // subpass access is dependent upon?
-                                let (prev_stages, prev_access) =
-                                    pipeline_stage_access_flags(late.access);
-                                let common_stages = curr_stages & prev_stages;
-                                if common_stages.is_empty() {
-                                    // No common dependencies
-                                    continue;
-                                }
+                            if let Some(accesses) = prev_subpass.accesses.get(node_idx) {
+                                for &SubresourceAccess { access, .. } in accesses {
+                                    // Is this previous subpass access dependent on anything the current
+                                    // subpass access is dependent upon?
+                                    let (prev_stages, prev_access) =
+                                        pipeline_stage_access_flags(access);
+                                    let common_stages = curr_stages & prev_stages;
+                                    if common_stages.is_empty() {
+                                        // No common dependencies
+                                        continue;
+                                    }
 
-                                let dep = dependencies
-                                    .entry((vk::SUBPASS_EXTERNAL as _, exec_idx))
-                                    .or_insert_with(|| {
-                                        SubpassDependency::new(
-                                            vk::SUBPASS_EXTERNAL as _,
-                                            exec_idx as _,
-                                        )
-                                    });
+                                    let dep = dependencies
+                                        .entry((vk::SUBPASS_EXTERNAL as _, exec_idx))
+                                        .or_insert_with(|| {
+                                            SubpassDependency::new(
+                                                vk::SUBPASS_EXTERNAL as _,
+                                                exec_idx as _,
+                                            )
+                                        });
 
-                                // Wait for ...
-                                dep.src_stage_mask |= common_stages;
-                                dep.src_access_mask |= prev_access;
+                                    // Wait for ...
+                                    dep.src_stage_mask |= common_stages;
+                                    dep.src_access_mask |= prev_access;
 
-                                // ... before we:
-                                dep.dst_stage_mask |=
-                                    curr_stages.min(vk::PipelineStageFlags::ALL_GRAPHICS);
-                                dep.dst_access_mask |= curr_access;
+                                    // ... before we:
+                                    dep.dst_stage_mask |=
+                                        curr_stages.min(vk::PipelineStageFlags::ALL_GRAPHICS);
+                                    dep.dst_access_mask |= curr_access;
 
-                                // If the source and destination stage masks both include
-                                // framebuffer-space stages then we need the BY_REGION flag
-                                if (prev_stages | curr_stages).intersects(
-                                    vk::PipelineStageFlags::FRAGMENT_SHADER
-                                        | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                                        | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
-                                        | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                                ) {
-                                    dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
-                                }
+                                    // If the source and destination stage masks both include
+                                    // framebuffer-space stages then we need the BY_REGION flag
+                                    if (prev_stages | curr_stages).intersects(
+                                        vk::PipelineStageFlags::FRAGMENT_SHADER
+                                            | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                                            | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                                            | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                                    ) {
+                                        dep.dependency_flags |= vk::DependencyFlags::BY_REGION;
+                                    }
 
-                                curr_stages &= !common_stages;
-                                curr_access &= !prev_access;
+                                    curr_stages &= !common_stages;
+                                    curr_access &= !prev_access;
 
-                                // If we found all dependencies for this stage there is no need to check
-                                // external passes
-                                if curr_stages.is_empty() {
-                                    continue 'accesses;
+                                    // If we found all dependencies for this stage there is no need to check
+                                    // external passes
+                                    if curr_stages.is_empty() {
+                                        continue 'accesses;
+                                    }
                                 }
                             }
                         }
@@ -1812,10 +1766,12 @@ impl Resolver {
                 let mut end = start;
                 while end < schedule.len() {
                     let other = passes[schedule[end]].as_ref().unwrap();
+
                     debug!(
                         "attempting to merge [{idx}: {}] with [{end}: {}]",
                         pass.name, other.name
                     );
+
                     if Self::allow_merge_passes(&pass, other) {
                         end += 1;
                     } else {
@@ -1912,17 +1868,13 @@ impl Resolver {
     }
 
     #[profiling::function]
-    fn record_execution_barriers(
+    fn record_execution_barriers<'a>(
         trace_pad: &'static str,
         cmd_buf: &CommandBuffer,
         bindings: &mut [Binding],
-        exec: &mut Execution,
-        record_framebuffer_access: bool,
+        accesses: impl IntoIterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
     ) {
         use std::slice::from_ref;
-
-        // TODO: Notice the very common case where we have previously barriered on something which
-        // has not had any access since the previous barrier
 
         // We store a Barriers in TLS to save an alloc; contents are POD
         thread_local! {
@@ -1954,11 +1906,6 @@ impl Resolver {
             range: vk::ImageSubresourceRange,
         }
 
-        enum Resource {
-            Buffer(BufferResource),
-            Image(ImageResource),
-        }
-
         BARRIERS.with_borrow_mut(|barriers| {
             // Initialize TLS from a previous call
             barriers.buffers.clear();
@@ -1968,116 +1915,83 @@ impl Resolver {
 
             // Map remaining accesses into vk_sync barriers (some accesses may have been removed by the
             // render pass leasing function)
-            let barriers = exec
-                .accesses
-                .iter()
-                .filter_map(|(node_idx, [early, late])| {
-                    let binding = &mut bindings[*node_idx];
-                    let next_access = early.access;
-                    let prev_access = if let Some(buffer) = binding.as_driver_buffer() {
-                        Buffer::access(buffer, late.access)
-                    } else if let Some(image) = binding.as_driver_image() {
-                        Image::access(image, late.access)
-                    } else if let Some(accel_struct) = binding.as_driver_acceleration_structure() {
-                        AccelerationStructure::access(accel_struct, late.access)
-                    } else {
-                        unimplemented!();
-                    };
 
-                    // If we find a subresource then it must have a resource attached
-                    if let Some(subresource) = early.subresource {
-                        if let Some(buf) = binding.as_driver_buffer() {
-                            let range = subresource.unwrap_buffer();
+            for (node_idx, accesses) in accesses {
+                let binding = &bindings[*node_idx];
 
-                            trace!(
-                                "{trace_pad}buffer {:?} {}..{} {:?} -> {:?}",
-                                binding.as_driver_buffer().unwrap(),
-                                range.start,
-                                range.end,
-                                next_access,
-                                prev_access,
-                            );
+                match binding {
+                    Binding::AccelerationStructure(..)
+                    | Binding::AccelerationStructureLease(..) => {
+                        let accel_struct = binding.as_driver_acceleration_structure().unwrap();
 
-                            return Some(Barrier {
-                                next_access,
-                                prev_access,
-                                resource: Some(Resource::Buffer(BufferResource {
-                                    buffer: **buf,
-                                    offset: range.start as _,
-                                    size: (range.end - range.start) as _,
-                                })),
-                            });
-                        } else if let Some(image) = binding.as_driver_image() {
-                            let range = subresource.unwrap_image().into_vk();
+                        let prev_access = AccelerationStructure::access(
+                            accel_struct,
+                            accesses.last().unwrap().access,
+                        );
 
-                            if !record_framebuffer_access && is_framebuffer_access(next_access) {
-                                return None;
-                            }
-
-                            trace!(
-                                "{trace_pad}image {:?} {:?}-{:?} -> {:?}-{:?}",
-                                binding.as_driver_image().unwrap(),
-                                prev_access,
-                                image_access_layout(prev_access),
-                                next_access,
-                                image_access_layout(next_access),
-                            );
-
-                            return Some(Barrier {
-                                next_access,
-                                prev_access,
-                                resource: Some(Resource::Image(ImageResource {
-                                    image: **image,
-                                    range,
-                                })),
-                            });
-                        }
+                        barriers.next_accesses.extend(
+                            accesses
+                                .iter()
+                                .map(|&SubresourceAccess { access, .. }| access),
+                        );
+                        barriers.prev_accesses.push(prev_access);
                     }
+                    Binding::Buffer(..) | Binding::BufferLease(..) => {
+                        let buffer = binding.as_driver_buffer().unwrap();
 
-                    Some(Barrier {
-                        next_access,
-                        prev_access,
-                        resource: None,
-                    })
-                })
-                .fold(barriers, |barriers, barrier| {
-                    let Barrier {
-                        next_access,
-                        prev_access,
-                        resource,
-                    } = barrier;
-                    match resource {
-                        Some(Resource::Buffer(resource)) => {
-                            barriers.buffers.push(Barrier {
-                                next_access,
-                                prev_access,
-                                resource,
-                            });
-                        }
-                        Some(Resource::Image(resource)) => {
-                            barriers.images.push(Barrier {
-                                next_access,
-                                prev_access,
-                                resource,
-                            });
-                        }
-                        None => {
-                            // HACK: It would be nice if AccessType was PartialOrd..
-                            if !barriers.next_accesses.contains(&next_access) {
-                                barriers.next_accesses.push(next_access);
-                            }
+                        for &SubresourceAccess {
+                            access,
+                            subresource,
+                        } in accesses
+                        {
+                            let Subresource::Buffer(range) = subresource else {
+                                unreachable!()
+                            };
 
-                            if !barriers.prev_accesses.contains(&prev_access) {
-                                barriers.prev_accesses.push(prev_access);
+                            for (prev_access, range) in Buffer::access(buffer, access, range) {
+                                barriers.buffers.push(Barrier {
+                                    next_access: access,
+                                    prev_access,
+                                    resource: BufferResource {
+                                        buffer: **buffer,
+                                        offset: range.start as _,
+                                        size: (range.end - range.start) as _,
+                                    },
+                                });
                             }
                         }
                     }
-                    barriers
-                });
+                    Binding::Image(..) | Binding::ImageLease(..) | Binding::SwapchainImage(..) => {
+                        let image = binding.as_driver_image().unwrap();
+
+                        for &SubresourceAccess {
+                            access,
+                            subresource,
+                        } in accesses
+                        {
+                            let Subresource::Image(range) = subresource else {
+                                unreachable!()
+                            };
+
+                            for (prev_access, range) in Image::access(image, access, range) {
+                                barriers.images.push(Barrier {
+                                    next_access: access,
+                                    prev_access,
+                                    resource: ImageResource {
+                                        image: **image,
+                                        range,
+                                    },
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+
             let global_barrier = if !barriers.next_accesses.is_empty() {
                 // No resource attached - we use a global barrier for these
                 trace!(
-                    "{trace_pad}barrier {:?} -> {:?}",
+                    "{trace_pad}global {:?}->{:?}",
                     barriers.next_accesses,
                     barriers.prev_accesses
                 );
@@ -2100,6 +2014,15 @@ impl Resolver {
                         offset,
                         size,
                     } = *resource;
+
+                    trace!(
+                        "{trace_pad}buffer {:?} {:?} {:?}->{:?}",
+                        buffer,
+                        offset..offset + size,
+                        prev_access,
+                        next_access,
+                    );
+
                     BufferBarrier {
                         next_accesses: from_ref(next_access),
                         previous_accesses: from_ref(prev_access),
@@ -2118,6 +2041,35 @@ impl Resolver {
                      resource,
                  }| {
                     let ImageResource { image, range } = *resource;
+
+                    struct ImageSubresourceRangeDebug(vk::ImageSubresourceRange);
+
+                    impl std::fmt::Debug for ImageSubresourceRangeDebug {
+                        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                            self.0.aspect_mask.fmt(f)?;
+
+                            f.write_str(" array: ")?;
+
+                            let array_layers = self.0.base_array_layer
+                                ..self.0.base_array_layer + self.0.layer_count;
+                            array_layers.fmt(f)?;
+
+                            f.write_str(" mip: ")?;
+
+                            let mip_levels =
+                                self.0.base_mip_level..self.0.base_mip_level + self.0.level_count;
+                            mip_levels.fmt(f)
+                        }
+                    }
+
+                    trace!(
+                        "{trace_pad}image {:?} {:?} {:?}->{:?}",
+                        image,
+                        ImageSubresourceRangeDebug(range),
+                        prev_access,
+                        next_access,
+                    );
+
                     ImageBarrier {
                         next_accesses: from_ref(next_access),
                         next_layout: image_access_layout(*next_access),
@@ -2245,7 +2197,7 @@ impl Resolver {
         );
 
         // Optimize the schedule; leasing the required stuff it needs
-        self.reorder_scheduled_passes(schedule, end_pass_idx);
+        Self::reorder_scheduled_passes(schedule, end_pass_idx);
         self.merge_scheduled_passes(&mut schedule.passes);
         self.lease_scheduled_resources(pool, &schedule.passes)?;
 
@@ -2267,22 +2219,12 @@ impl Resolver {
                 "  ",
                 cmd_buf,
                 &mut self.graph.bindings,
-                &mut pass.execs[0],
-                true,
+                &pass.execs[0].accesses,
             );
 
             let render_area = if is_graphic {
-                for exec_idx in 1..pass.execs.len() {
-                    Self::record_execution_barriers(
-                        "  ",
-                        cmd_buf,
-                        &mut self.graph.bindings,
-                        &mut pass.execs[exec_idx],
-                        false,
-                    );
-                }
-
                 let render_area = Self::render_area(&self.graph.bindings, pass);
+
                 Self::begin_render_pass(
                     cmd_buf,
                     &self.graph.bindings,
@@ -2290,12 +2232,19 @@ impl Resolver {
                     physical_pass,
                     render_area,
                 )?;
+
                 Some(render_area)
             } else {
                 None
             };
 
             for exec_idx in 0..pass.execs.len() {
+                let render_area = is_graphic.then(|| {
+                    pass.execs[exec_idx]
+                        .render_area
+                        .unwrap_or(render_area.unwrap())
+                });
+
                 let exec = &mut pass.execs[exec_idx];
 
                 if is_graphic && exec_idx > 0 {
@@ -2311,11 +2260,14 @@ impl Resolver {
                         exec.depth_stencil,
                     )?;
 
-                    if is_graphic && pass.render_area.is_none() {
+                    if is_graphic {
                         let render_area = render_area.unwrap();
+
                         // In this case we set the viewport and scissor for the user
                         Self::set_viewport(
                             cmd_buf,
+                            render_area.x as _,
+                            render_area.y as _,
                             render_area.width as _,
                             render_area.height as _,
                             exec.depth_stencil
@@ -2326,7 +2278,13 @@ impl Resolver {
                                 })
                                 .unwrap_or(0.0..1.0),
                         );
-                        Self::set_scissor(cmd_buf, render_area.width, render_area.height);
+                        Self::set_scissor(
+                            cmd_buf,
+                            render_area.x,
+                            render_area.y,
+                            render_area.width,
+                            render_area.height,
+                        );
                     }
 
                     Self::bind_descriptor_sets(cmd_buf, pipeline, physical_pass, exec_idx);
@@ -2337,8 +2295,7 @@ impl Resolver {
                         "    ",
                         cmd_buf,
                         &mut self.graph.bindings,
-                        exec,
-                        true,
+                        &exec.accesses,
                     );
                 }
 
@@ -2433,57 +2390,50 @@ impl Resolver {
 
     #[profiling::function]
     fn render_area(bindings: &[Binding], pass: &Pass) -> Area {
-        pass.render_area.unwrap_or_else(|| {
-            // set_render_area was not specified so we're going to guess using the minimum common
-            // attachment extents
-            let first_exec = pass.execs.first().unwrap();
+        // set_render_area was not specified so we're going to guess using the minimum common
+        // attachment extents
+        let first_exec = pass.execs.first().unwrap();
 
-            // We must be able to find the render area because render passes require at least one
-            // image to be attached
-            let (mut width, mut height) = (u32::MAX, u32::MAX);
-            for (attachment_width, attachment_height) in first_exec
-                .color_clears
-                .values()
-                .copied()
-                .map(|(attachment, _)| attachment)
-                .chain(first_exec.color_loads.values().copied())
-                .chain(first_exec.color_stores.values().copied())
-                .map(|attachment| {
-                    let info = bindings[attachment.target].as_driver_image().unwrap().info;
+        // We must be able to find the render area because render passes require at least one
+        // image to be attached
+        let (mut width, mut height) = (u32::MAX, u32::MAX);
+        for (attachment_width, attachment_height) in first_exec
+            .color_clears
+            .values()
+            .copied()
+            .map(|(attachment, _)| attachment)
+            .chain(first_exec.color_loads.values().copied())
+            .chain(first_exec.color_stores.values().copied())
+            .chain(
+                first_exec
+                    .depth_stencil_clear
+                    .map(|(attachment, _)| attachment),
+            )
+            .chain(first_exec.depth_stencil_load)
+            .chain(first_exec.depth_stencil_store)
+            .map(|attachment| {
+                let info = bindings[attachment.target].as_driver_image().unwrap().info;
 
-                    (info.width, info.height)
-                })
-            {
-                width = width.min(attachment_width);
-                height = height.min(attachment_height);
-            }
+                (
+                    info.width >> attachment.base_mip_level,
+                    info.height >> attachment.base_mip_level,
+                )
+            })
+        {
+            width = width.min(attachment_width);
+            height = height.min(attachment_height);
+        }
 
-            if let Some((attachment_width, attachment_height)) =
-                first_exec.depth_stencil_clear.map(|(attachment, _)| {
-                    let info = bindings[attachment.target].as_driver_image().unwrap().info;
-                    (info.width, info.height)
-                })
-            {
-                if (width, height) != (u32::MAX, u32::MAX) {
-                    assert_eq!(width, attachment_width);
-                    assert_eq!(height, attachment_height);
-                }
-                width = width.min(attachment_width);
-                height = height.min(attachment_height);
-            }
-
-            Area {
-                height,
-                width,
-                x: 0,
-                y: 0,
-            }
-        })
+        Area {
+            height,
+            width,
+            x: 0,
+            y: 0,
+        }
     }
 
     #[profiling::function]
-    //fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule) {
-    fn reorder_scheduled_passes(&mut self, schedule: &mut Schedule, end_pass_idx: usize) {
+    fn reorder_scheduled_passes(schedule: &mut Schedule, end_pass_idx: usize) {
         // It must be a party
         if schedule.passes.len() < 3 {
             return;
@@ -2682,7 +2632,7 @@ impl Resolver {
         });
     }
 
-    fn set_scissor(cmd_buf: &CommandBuffer, width: u32, height: u32) {
+    fn set_scissor(cmd_buf: &CommandBuffer, x: i32, y: i32, width: u32, height: u32) {
         use std::slice::from_ref;
 
         unsafe {
@@ -2691,13 +2641,20 @@ impl Resolver {
                 0,
                 from_ref(&vk::Rect2D {
                     extent: vk::Extent2D { width, height },
-                    offset: vk::Offset2D { x: 0, y: 0 },
+                    offset: vk::Offset2D { x, y },
                 }),
             );
         }
     }
 
-    fn set_viewport(cmd_buf: &CommandBuffer, width: f32, height: f32, depth: Range<f32>) {
+    fn set_viewport(
+        cmd_buf: &CommandBuffer,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        depth: Range<f32>,
+    ) {
         use std::slice::from_ref;
 
         unsafe {
@@ -2705,8 +2662,8 @@ impl Resolver {
                 **cmd_buf,
                 0,
                 from_ref(&vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
+                    x,
+                    y,
                     width,
                     height,
                     min_depth: depth.start,
@@ -2746,15 +2703,14 @@ impl Resolver {
             "Queue index must be within the range of the available queues created by the device."
         );
 
-        unsafe {
-            Device::wait_for_fence(&cmd_buf.device, &cmd_buf.fence)
-                .map_err(|_| DriverError::OutOfMemory)?;
+        CommandBuffer::wait_until_executed(&mut cmd_buf)?;
 
+        unsafe {
             cmd_buf
                 .device
                 .begin_command_buffer(
                     **cmd_buf,
-                    &vk::CommandBufferBeginInfo::builder()
+                    &vk::CommandBufferBeginInfo::default()
                         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                 )
                 .map_err(|_| DriverError::OutOfMemory)?;
@@ -2775,11 +2731,13 @@ impl Resolver {
                 .device
                 .queue_submit(
                     cmd_buf.device.queues[queue_family_index][queue_index],
-                    from_ref(&vk::SubmitInfo::builder().command_buffers(from_ref(&cmd_buf))),
+                    from_ref(&vk::SubmitInfo::default().command_buffers(from_ref(&cmd_buf))),
                     cmd_buf.fence,
                 )
                 .map_err(|_| DriverError::OutOfMemory)?;
         }
+
+        cmd_buf.waiting = true;
 
         // This graph contains references to buffers, images, and other resources which must be kept
         // alive until this graph execution completes on the GPU. Once those references are dropped
@@ -2791,12 +2749,12 @@ impl Resolver {
         Ok(cmd_buf)
     }
 
-    pub(crate) fn unbind_node<N>(&mut self, node: N) -> <N as Edge<Self>>::Result
-    where
-        N: Edge<Self>,
-        N: Unbind<Self, <N as Edge<Self>>::Result>,
-    {
-        node.unbind(self)
+    pub(crate) fn swapchain_image(&mut self, node: SwapchainImageNode) -> &SwapchainImage {
+        let Some(swapchain_image) = self.graph.bindings[node.idx].as_swapchain_image() else {
+            panic!("invalid swapchain image node");
+        };
+
+        swapchain_image
     }
 
     #[profiling::function]
@@ -2806,256 +2764,264 @@ impl Resolver {
         pass: &Pass,
         physical_pass: &PhysicalPass,
     ) -> Result<(), DriverError> {
-        thread_local! {
-            static TLS: RefCell<Tls> = Default::default();
-        }
-
-        struct IndexWrite {
+        struct IndexWrite<'a> {
             idx: usize,
-            write: vk::WriteDescriptorSet,
+            write: vk::WriteDescriptorSet<'a>,
         }
 
         #[derive(Default)]
-        struct Tls {
-            accel_struct_infos: Vec<vk::WriteDescriptorSetAccelerationStructureKHR>,
-            accel_struct_writes: Vec<IndexWrite>,
+        struct Tls<'a> {
+            accel_struct_infos: Vec<vk::WriteDescriptorSetAccelerationStructureKHR<'a>>,
+            accel_struct_writes: Vec<IndexWrite<'a>>,
             buffer_infos: Vec<vk::DescriptorBufferInfo>,
-            buffer_writes: Vec<IndexWrite>,
-            descriptors: Vec<vk::WriteDescriptorSet>,
+            buffer_writes: Vec<IndexWrite<'a>>,
+            descriptors: Vec<vk::WriteDescriptorSet<'a>>,
             image_infos: Vec<vk::DescriptorImageInfo>,
-            image_writes: Vec<IndexWrite>,
+            image_writes: Vec<IndexWrite<'a>>,
         }
 
-        TLS.with_borrow_mut(|tls| {
-            // Initialize TLS from a previous call
-            tls.accel_struct_infos.clear();
-            tls.accel_struct_writes.clear();
-            tls.buffer_infos.clear();
-            tls.buffer_writes.clear();
-            tls.descriptors.clear();
-            tls.image_infos.clear();
-            tls.image_writes.clear();
+        let mut tls = Tls::default();
 
-            for (exec_idx, exec, pipeline) in pass
-                .execs
-                .iter()
-                .enumerate()
-                .filter_map(|(exec_idx, exec)| {
-                    exec.pipeline
-                        .as_ref()
-                        .map(|pipeline| (exec_idx, exec, pipeline))
-                })
-                .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
-            {
-                let descriptor_sets = &physical_pass.exec_descriptor_sets[&exec_idx];
+        for (exec_idx, exec, pipeline) in pass
+            .execs
+            .iter()
+            .enumerate()
+            .filter_map(|(exec_idx, exec)| {
+                exec.pipeline
+                    .as_ref()
+                    .map(|pipeline| (exec_idx, exec, pipeline))
+            })
+            .filter(|(.., pipeline)| !pipeline.descriptor_info().layouts.is_empty())
+        {
+            let descriptor_sets = &physical_pass.exec_descriptor_sets[&exec_idx];
 
-                // Write the manually bound things (access, read, and write functions)
-                for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
-                    let (descriptor_set_idx, dst_binding, binding_offset) = descriptor.into_tuple();
-                    let (descriptor_info, _) = pipeline
+            // Write the manually bound things (access, read, and write functions)
+            for (descriptor, (node_idx, view_info)) in exec.bindings.iter() {
+                let (descriptor_set_idx, dst_binding, binding_offset) = descriptor.into_tuple();
+                let (descriptor_info, _) = pipeline
                         .descriptor_bindings()
-                        .get(&DescriptorBinding(descriptor_set_idx, dst_binding))
+                        .get(&Descriptor { set: descriptor_set_idx, binding: dst_binding })
                         .unwrap_or_else(|| panic!("descriptor {descriptor_set_idx}.{dst_binding}[{binding_offset}] specified in recorded execution of pass \"{}\" was not discovered through shader reflection", &pass.name));
-                    let descriptor_type = descriptor_info.descriptor_type();
-                    let bound_node = &bindings[*node_idx];
-                    if let Some(image) = bound_node.as_driver_image() {
-                        let view_info = view_info.as_ref().unwrap();
-                        let mut image_view_info = *view_info.as_image().unwrap();
+                let descriptor_type = descriptor_info.descriptor_type();
+                let bound_node = &bindings[*node_idx];
+                if let Some(image) = bound_node.as_driver_image() {
+                    let view_info = view_info.as_ref().unwrap();
+                    let mut image_view_info = *view_info.as_image().unwrap();
 
-                        // Handle default views which did not specify a particaular aspect
-                        if image_view_info.aspect_mask.is_empty() {
-                            image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
-                        }
+                    // Handle default views which did not specify a particaular aspect
+                    if image_view_info.aspect_mask.is_empty() {
+                        image_view_info.aspect_mask = format_aspect_mask(image.info.fmt);
+                    }
 
-                        let image_view = Image::view(image, image_view_info)?;
-                        let image_layout = match descriptor_type {
-                            vk::DescriptorType::COMBINED_IMAGE_SAMPLER | vk::DescriptorType::SAMPLED_IMAGE => {
-                                if image_view_info.aspect_mask.contains(
-                                    vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
-                                ) {
-                                    vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                                } else if image_view_info
-                                    .aspect_mask
-                                    .contains(vk::ImageAspectFlags::DEPTH)
-                                {
-                                    vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-                                } else if image_view_info
-                                    .aspect_mask
-                                    .contains(vk::ImageAspectFlags::STENCIL)
-                                {
-                                    vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
-                                } else {
-                                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-                                }
+                    let image_view = Image::view(image, image_view_info)?;
+                    let image_layout = match descriptor_type {
+                        vk::DescriptorType::COMBINED_IMAGE_SAMPLER
+                        | vk::DescriptorType::SAMPLED_IMAGE => {
+                            if image_view_info.aspect_mask.contains(
+                                vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                            ) {
+                                vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                            } else if image_view_info
+                                .aspect_mask
+                                .contains(vk::ImageAspectFlags::DEPTH)
+                            {
+                                vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+                            } else if image_view_info
+                                .aspect_mask
+                                .contains(vk::ImageAspectFlags::STENCIL)
+                            {
+                                vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
+                            } else {
+                                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                             }
-                            vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
-                            _ => unimplemented!("{descriptor_type:?}"),
-                        };
+                        }
+                        vk::DescriptorType::STORAGE_IMAGE => vk::ImageLayout::GENERAL,
+                        _ => unimplemented!("{descriptor_type:?}"),
+                    };
 
-                        if binding_offset == 0 {
+                    if binding_offset == 0 {
+                        tls.image_writes.push(IndexWrite {
+                            idx: tls.image_infos.len(),
+                            write: vk::WriteDescriptorSet {
+                                dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                dst_binding,
+                                descriptor_type,
+                                descriptor_count: 1,
+                                ..Default::default()
+                            },
+                        });
+                    } else {
+                        tls.image_writes.last_mut().unwrap().write.descriptor_count += 1;
+                    }
+
+                    tls.image_infos.push(
+                        vk::DescriptorImageInfo::default()
+                            .image_layout(image_layout)
+                            .image_view(image_view),
+                    );
+                } else if let Some(buffer) = bound_node.as_driver_buffer() {
+                    let view_info = view_info.as_ref().unwrap();
+                    let buffer_view_info = view_info.as_buffer().unwrap();
+
+                    if binding_offset == 0 {
+                        tls.buffer_writes.push(IndexWrite {
+                            idx: tls.buffer_infos.len(),
+                            write: vk::WriteDescriptorSet {
+                                dst_set: *descriptor_sets[descriptor_set_idx as usize],
+                                dst_binding,
+                                descriptor_type,
+                                descriptor_count: 1,
+                                ..Default::default()
+                            },
+                        });
+                    } else {
+                        tls.buffer_writes.last_mut().unwrap().write.descriptor_count += 1;
+                    }
+
+                    tls.buffer_infos.push(
+                        vk::DescriptorBufferInfo::default()
+                            .buffer(**buffer)
+                            .offset(buffer_view_info.start)
+                            .range(buffer_view_info.end - buffer_view_info.start),
+                    );
+                } else if let Some(accel_struct) = bound_node.as_driver_acceleration_structure() {
+                    if binding_offset == 0 {
+                        tls.accel_struct_writes.push(IndexWrite {
+                            idx: tls.accel_struct_infos.len(),
+                            write: vk::WriteDescriptorSet::default()
+                                .dst_set(*descriptor_sets[descriptor_set_idx as usize])
+                                .dst_binding(dst_binding)
+                                .descriptor_type(descriptor_type)
+                                .descriptor_count(1),
+                        });
+                    } else {
+                        tls.accel_struct_writes
+                            .last_mut()
+                            .unwrap()
+                            .write
+                            .descriptor_count += 1;
+                    }
+
+                    tls.accel_struct_infos.push(
+                        vk::WriteDescriptorSetAccelerationStructureKHR::default()
+                            .acceleration_structures(std::slice::from_ref(accel_struct)),
+                    );
+                } else {
+                    unimplemented!();
+                }
+            }
+
+            if let ExecutionPipeline::Graphic(pipeline) = pipeline {
+                // Write graphic render pass input attachments (they're automatic)
+                if exec_idx > 0 {
+                    for (
+                        &Descriptor {
+                            set: descriptor_set_idx,
+                            binding: dst_binding,
+                        },
+                        (descriptor_info, _),
+                    ) in &pipeline.descriptor_bindings
+                    {
+                        if let DescriptorInfo::InputAttachment(_, attachment_idx) = *descriptor_info
+                        {
+                            let is_random_access = exec.color_stores.contains_key(&attachment_idx)
+                                || exec.color_resolves.contains_key(&attachment_idx);
+                            let (attachment, write_exec) = pass.execs[0..exec_idx]
+                                .iter()
+                                .rev()
+                                .find_map(|exec| {
+                                    exec.color_stores
+                                        .get(&attachment_idx)
+                                        .copied()
+                                        .map(|attachment| (attachment, exec))
+                                        .or_else(|| {
+                                            exec.color_resolves.get(&attachment_idx).map(
+                                                |(resolved_attachment, _)| {
+                                                    (*resolved_attachment, exec)
+                                                },
+                                            )
+                                        })
+                                })
+                                .expect("input attachment not written");
+                            let late = &write_exec.accesses[&attachment.target].last().unwrap();
+                            let image_range = late.subresource.as_image().unwrap();
+                            let image_binding = &bindings[attachment.target];
+                            let image = image_binding.as_driver_image().unwrap();
+                            let image_view_info = ImageViewInfo {
+                                array_layer_count: image_range.layer_count,
+                                aspect_mask: attachment.aspect_mask,
+                                base_array_layer: image_range.base_array_layer,
+                                base_mip_level: image_range.base_mip_level,
+                                fmt: attachment.format,
+                                mip_level_count: image_range.level_count,
+                                ty: image.info.ty,
+                            };
+                            let image_view = Image::view(image, image_view_info)?;
+
                             tls.image_writes.push(IndexWrite {
                                 idx: tls.image_infos.len(),
                                 write: vk::WriteDescriptorSet {
-                                        dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                        dst_binding,
-                                        descriptor_type,
-                                        descriptor_count: 1,
-                                        ..Default::default()
-                                    },
-                                }
-                            );
-                        } else {
-                            tls.image_writes.last_mut().unwrap().write.descriptor_count += 1;
-                        }
-
-                        tls.image_infos.push(vk::DescriptorImageInfo {
-                            image_layout,
-                            image_view,
-                            sampler: vk::Sampler::null(),
-                        });
-                    } else if let Some(buffer) = bound_node.as_driver_buffer() {
-                        let view_info = view_info.as_ref().unwrap();
-                        let buffer_view_info = view_info.as_buffer().unwrap();
-
-                        if binding_offset == 0 {
-                            tls.buffer_writes.push(IndexWrite {
-                                idx: tls.buffer_infos.len(),
-                                write: vk::WriteDescriptorSet {
-                                        dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                        dst_binding,
-                                        descriptor_type,
-                                        descriptor_count: 1,
-                                        ..Default::default()
-                                    },
-                                }
-                            );
-                        } else {
-                            tls.buffer_writes.last_mut().unwrap().write.descriptor_count += 1;
-                        }
-
-                        tls.buffer_infos.push(vk::DescriptorBufferInfo {
-                            buffer: **buffer,
-                            offset: buffer_view_info.start,
-                            range: buffer_view_info.end - buffer_view_info.start,
-                        });
-                    } else if let Some(accel_struct) = bound_node.as_driver_acceleration_structure() {
-                        if binding_offset == 0 {
-                            tls.accel_struct_writes.push(IndexWrite {
-                                idx: tls.accel_struct_infos.len(),
-                                write: vk::WriteDescriptorSet {
                                     dst_set: *descriptor_sets[descriptor_set_idx as usize],
                                     dst_binding,
-                                    descriptor_type,
+                                    descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
                                     descriptor_count: 1,
                                     ..Default::default()
                                 },
                             });
-                        } else {
-                            tls.accel_struct_writes.last_mut().unwrap().write.descriptor_count += 1;
-                        }
 
-                        tls.accel_struct_infos.push(vk::WriteDescriptorSetAccelerationStructureKHR::builder().acceleration_structures(std::slice::from_ref(accel_struct)).build());
-                    } else {
-                        unimplemented!();
-                    }
-                }
-
-                if let ExecutionPipeline::Graphic(pipeline) = pipeline {
-                    // Write graphic render pass input attachments (they're automatic)
-                    if exec_idx > 0 {
-                        for (&DescriptorBinding(descriptor_set_idx, dst_binding), (descriptor_info, _)) in
-                            &pipeline.descriptor_bindings
-                        {
-                            if let DescriptorInfo::InputAttachment(_, attachment_idx) = *descriptor_info {
-                                let is_random_access =  exec.color_stores.contains_key(&attachment_idx)
-                                    || exec.color_resolves.contains_key(&attachment_idx);
-                                let (attachment, write_exec) = pass.execs[0..exec_idx]
-                                    .iter()
-                                    .rev()
-                                    .find_map(|exec| {
-                                        exec.color_stores.get(&attachment_idx).copied()
-                                            .map(|attachment| {
-                                                (attachment, exec)
-                                            })
-                                            .or_else(|| {
-                                                exec.color_resolves.get(&attachment_idx)
-                                                .map(
-                                                    |(resolved_attachment, _)| {
-                                                        (*resolved_attachment, exec)
-                                                    },
-                                                )
-                                            })
-                                    })
-                                    .expect("input attachment not written");
-                                let [_, late] = &write_exec.accesses[&attachment.target];
-                                let image_subresource = late.subresource.as_ref().unwrap().unwrap_image();
-                                let image_binding = &bindings[attachment.target];
-                                let image = image_binding.as_driver_image().unwrap();
-                                let image_view_info = ImageViewInfo {
-                                    array_layer_count: image_subresource.array_layer_count,
-                                    aspect_mask: attachment.aspect_mask,
-                                    base_array_layer: image_subresource.base_array_layer,
-                                    base_mip_level: image_subresource.base_mip_level,
-                                    fmt: attachment.format,
-                                    mip_level_count: image_subresource.mip_level_count,
-                                    ty: image.info.ty,
-                                };
-                                let image_view = Image::view(image, image_view_info)?;
-
-                                tls.image_writes.push(IndexWrite {
-                                    idx: tls.image_infos.len(),
-                                    write: vk::WriteDescriptorSet {
-                                            dst_set: *descriptor_sets[descriptor_set_idx as usize],
-                                            dst_binding,
-                                            descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
-                                            descriptor_count: 1,
-                                            ..Default::default()
-                                        },
-                                    }
-                                );
-
-                                tls.image_infos.push(vk::DescriptorImageInfo {
-                                    image_layout: Self::attachment_layout(
-                                        attachment.aspect_mask,
-                                        is_random_access,
-                                        true,
-                                    ),
-                                    image_view,
-                                    sampler: vk::Sampler::null(),
-                                });
-                            }
+                            tls.image_infos.push(vk::DescriptorImageInfo {
+                                image_layout: Self::attachment_layout(
+                                    attachment.aspect_mask,
+                                    is_random_access,
+                                    true,
+                                ),
+                                image_view,
+                                sampler: vk::Sampler::null(),
+                            });
                         }
                     }
                 }
             }
+        }
 
-            // NOTE: We assign the below pointers after the above insertions so they remain stable!
+        // NOTE: We assign the below pointers after the above insertions so they remain stable!
 
-            tls.descriptors.extend(tls.accel_struct_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
-                write.p_next = tls.accel_struct_infos.as_ptr().add(idx) as *const _;
-                write
-            }));
-            tls.descriptors.extend(tls.buffer_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+        tls.descriptors
+            .extend(tls.accel_struct_writes.drain(..).map(
+                |IndexWrite { idx, mut write }| unsafe {
+                    write.p_next = tls.accel_struct_infos.as_ptr().add(idx) as *const _;
+                    write
+                },
+            ));
+        tls.descriptors.extend(tls.buffer_writes.drain(..).map(
+            |IndexWrite { idx, mut write }| unsafe {
                 write.p_buffer_info = tls.buffer_infos.as_ptr().add(idx);
                 write
-            }));
-            tls.descriptors.extend(tls.image_writes.drain(..).map(|IndexWrite { idx, mut write }| unsafe {
+            },
+        ));
+        tls.descriptors.extend(tls.image_writes.drain(..).map(
+            |IndexWrite { idx, mut write }| unsafe {
                 write.p_image_info = tls.image_infos.as_ptr().add(idx);
                 write
-            }));
+            },
+        ));
 
-            if !tls.descriptors.is_empty() {
-                trace!("  writing {} descriptors ({} buffers, {} images)", tls.descriptors.len(), tls.buffer_infos.len(), tls.image_infos.len());
+        if !tls.descriptors.is_empty() {
+            trace!(
+                "  writing {} descriptors ({} buffers, {} images)",
+                tls.descriptors.len(),
+                tls.buffer_infos.len(),
+                tls.image_infos.len()
+            );
 
-                unsafe {
-                    cmd_buf
-                        .device
-                        .update_descriptor_sets(tls.descriptors.as_slice(), &[]);
-                }
+            unsafe {
+                cmd_buf
+                    .device
+                    .update_descriptor_sets(tls.descriptors.as_slice(), &[]);
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 }
 

@@ -4,8 +4,8 @@ use {
     super::{device::Device, DriverError, Instance},
     ash::vk,
     ash_window::create_surface,
-    log::error,
-    raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle},
+    log::warn,
+    raw_window_handle::{HasDisplayHandle, HasWindowHandle},
     std::{
         fmt::{Debug, Formatter},
         ops::Deref,
@@ -28,21 +28,31 @@ impl Surface {
     #[profiling::function]
     pub fn create(
         device: &Arc<Device>,
-        display_window: &(impl HasRawDisplayHandle + HasRawWindowHandle),
+        window: &(impl HasDisplayHandle + HasWindowHandle),
     ) -> Result<Self, DriverError> {
         let device = Arc::clone(device);
         let instance = Device::instance(&device);
+        let display_handle = window.display_handle().map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
+        let window_handle = window.window_handle().map_err(|err| {
+            warn!("{err}");
+
+            DriverError::Unsupported
+        })?;
         let surface = unsafe {
             create_surface(
                 Instance::entry(instance),
                 instance,
-                display_window.raw_display_handle(),
-                display_window.raw_window_handle(),
+                display_handle.as_raw(),
+                window_handle.as_raw(),
                 None,
             )
         }
         .map_err(|err| {
-            error!("Unable to create surface: {err}");
+            warn!("Unable to create surface: {err}");
 
             DriverError::Unsupported
         })?;
@@ -60,7 +70,7 @@ impl Surface {
                 .unwrap()
                 .get_physical_device_surface_formats(*this.device.physical_device, this.surface)
                 .map_err(|err| {
-                    error!("Unable to get surface formats: {err}");
+                    warn!("Unable to get surface formats: {err}");
 
                     DriverError::Unsupported
                 })
@@ -141,12 +151,10 @@ impl Drop for Surface {
             return;
         }
 
+        let surface_ext = Device::expect_surface_ext(&self.device);
+
         unsafe {
-            self.device
-                .surface_ext
-                .as_ref()
-                .unwrap()
-                .destroy_surface(self.surface, None);
+            surface_ext.destroy_surface(self.surface, None);
         }
     }
 }

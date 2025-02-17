@@ -1,5 +1,5 @@
 use {
-    super::{Bind, Binding, RenderGraph, Resolver, SwapchainImageNode, Unbind},
+    super::{Bind, Binding, RenderGraph, SwapchainImageNode},
     crate::driver::swapchain::SwapchainImage,
 };
 
@@ -29,15 +29,5 @@ impl Binding {
             // The private code in this module should prevent this branch
             unreachable!();
         }
-    }
-}
-
-impl Unbind<Resolver, SwapchainImage> for SwapchainImageNode {
-    // We allow the resolver to unbind a swapchain node directly into a shared image
-    fn unbind(self, graph: &mut Resolver) -> SwapchainImage {
-        graph.graph.bindings[self.idx]
-            .as_swapchain_image()
-            .unwrap()
-            .clone()
     }
 }

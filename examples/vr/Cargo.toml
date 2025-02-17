@@ -14,6 +14,7 @@ bytemuck = { version = "1.14", features = ["derive"] }
 ctrlc = "3.4"
 glam = { version = "0.27", features = ["bytemuck", "mint"] }
 image = "0.25"
+log = "0.4"
 meshopt = "0.2"
 mikktspace = "0.3"
 mint = "0.5"

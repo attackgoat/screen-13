@@ -1,15 +1,23 @@
 mod profile_with_puffin;
 
-use {bytemuck::cast_slice, inline_spirv::inline_spirv, screen_13::prelude::*, std::sync::Arc};
+use {
+    bytemuck::cast_slice,
+    clap::Parser,
+    inline_spirv::inline_spirv,
+    screen_13::prelude::*,
+    screen_13_window::{WindowBuilder, WindowError},
+    std::sync::Arc,
+};
 
 // A Vulkan triangle using a graphic pipeline, vertex/fragment shaders, and index/vertex buffers.
-fn main() -> Result<(), DisplayError> {
+fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let event_loop = EventLoop::new().build()?;
+    let args = Args::parse();
+    let window = WindowBuilder::default().debug(args.debug).build()?;
     let triangle_pipeline = Arc::new(GraphicPipeline::create(
-        &event_loop.device,
+        &window.device,
         GraphicPipelineInfo::default(),
         [
             Shader::new_vertex(
@@ -52,13 +60,13 @@ fn main() -> Result<(), DisplayError> {
     )?);
 
     let index_buf = Arc::new(Buffer::create_from_slice(
-        &event_loop.device,
+        &window.device,
         vk::BufferUsageFlags::INDEX_BUFFER,
         cast_slice(&[0u16, 1, 2]),
     )?);
 
     let vertex_buf = Arc::new(Buffer::create_from_slice(
-        &event_loop.device,
+        &window.device,
         vk::BufferUsageFlags::VERTEX_BUFFER,
         cast_slice(&[
             1.0f32, 1.0, 0.0, // v1
@@ -70,7 +78,7 @@ fn main() -> Result<(), DisplayError> {
         ]),
     )?);
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         let index_node = frame.render_graph.bind_node(&index_buf);
         let vertex_node = frame.render_graph.bind_node(&vertex_buf);
 
@@ -88,4 +96,11 @@ fn main() -> Result<(), DisplayError> {
                 subpass.draw_indexed(3, 1, 0, 0, 0);
             });
     })
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

@@ -3,9 +3,11 @@ pub mod prelude {
 }
 
 pub use egui;
+use egui_winit::winit::raw_window_handle::HasDisplayHandle;
 
 use {
     bytemuck::cast_slice,
+    egui_winit::winit::{event::Event, window::Window},
     screen_13::prelude::*,
     std::{borrow::Cow, collections::HashMap, sync::Arc},
 };
@@ -21,10 +23,7 @@ pub struct Egui {
 }
 
 impl Egui {
-    pub fn new(
-        device: &Arc<Device>,
-        event_loop: &egui_winit::winit::event_loop::EventLoopWindowTarget<()>,
-    ) -> Self {
+    pub fn new(device: &Arc<Device>, display_target: &dyn HasDisplayHandle) -> Self {
         let ppl = Arc::new(
             GraphicPipeline::create(
                 device,
@@ -58,9 +57,6 @@ impl Egui {
         );
 
         let ctx = egui::Context::default();
-        let native_pixels_per_point = event_loop
-            .primary_monitor()
-            .map(|monitor| monitor.scale_factor() as f32);
         let max_texture_side = Some(
             device
                 .physical_device
@@ -71,8 +67,9 @@ impl Egui {
         let egui_winit = egui_winit::State::new(
             ctx.clone(),
             egui::ViewportId::ROOT,
-            event_loop,
-            native_pixels_per_point,
+            display_target,
+            None,
+            None,
             max_texture_side,
         );
 

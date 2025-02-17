@@ -1,6 +1,8 @@
 use {
     bytemuck::cast_slice,
+    clap::Parser,
     inline_spirv::inline_spirv,
+    log::warn,
     screen_13::prelude::*,
     std::{mem::size_of, sync::Arc},
 };
@@ -18,7 +20,9 @@ fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
     let mut render_graph = RenderGraph::new();
-    let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+    let args = Args::parse();
+    let device_info = DeviceInfoBuilder::default().debug(args.debug);
+    let device = Arc::new(Device::create_headless(device_info)?);
     let size = 4;
 
     // The 4x4 depth image will have pixels that look like this:
@@ -221,4 +225,11 @@ fn copy_image_to_buffer(
     render_graph.copy_image_to_buffer(reduced_image, result_buf);
 
     Ok(render_graph.unbind_node(result_buf))
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

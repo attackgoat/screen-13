@@ -125,7 +125,7 @@ impl DescriptorPool {
 
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
-                &vk::DescriptorPoolCreateInfo::builder()
+                &vk::DescriptorPoolCreateInfo::default()
                     .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
                     .max_sets(info.max_sets)
                     .pool_sizes(&pool_sizes[0..pool_size_count]),
@@ -162,7 +162,7 @@ impl DescriptorPool {
     ) -> Result<impl Iterator<Item = DescriptorSet> + 'a, DriverError> {
         use std::slice::from_ref;
 
-        let mut create_info = vk::DescriptorSetAllocateInfo::builder()
+        let mut create_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(this.descriptor_pool)
             .set_layouts(from_ref(layout));
         create_info.descriptor_set_count = count;

@@ -1,4 +1,5 @@
 use {
+    clap::Parser,
     screen_13::{
         pool::alias::{Alias, AliasPool},
         prelude::*,
@@ -22,7 +23,9 @@ use {
 fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
-    let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+    let args = Args::parse();
+    let device_info = DeviceInfoBuilder::default().debug(args.debug);
+    let device = Arc::new(Device::create_headless(device_info)?);
 
     // We wrap HashPool in an AliasPool container to enable resource aliasing
     let mut pool = AliasPool::new(HashPool::new(&device));
@@ -64,4 +67,11 @@ fn main() -> Result<(), DriverError> {
     assert_ne!(image1, image4);
 
     Ok(())
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

@@ -1,20 +1,27 @@
-use {screen_13::prelude::*, screen_13_hot::prelude::*, std::path::PathBuf};
+use {
+    clap::Parser,
+    screen_13::prelude::*,
+    screen_13_hot::prelude::*,
+    screen_13_window::{Window, WindowError},
+    std::path::PathBuf,
+};
 
 /// This program draws a noise signal to the swapchain - make changes to fill_image.hlsl or the
 /// noise.hlsl file it includes to see those changes update while the program is still running.
 ///
 /// Run with RUST_LOG=info to get notification of shader compilations.
-fn main() -> Result<(), DisplayError> {
+fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
 
-    let event_loop = EventLoop::new().build()?;
+    let args = Args::parse();
+    let window = Window::builder().debug(args.debug).build()?;
 
     // Create a graphic pipeline - the same as normal except for "Hot" prefixes and we provide the
     // shader source code path instead of the shader source code bytes
     let cargo_manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fill_image_path = cargo_manifest_dir.join("examples/res/fill_image.hlsl");
     let mut pipeline = HotGraphicPipeline::create(
-        &event_loop.device,
+        &window.device,
         GraphicPipelineInfo::default(),
         [
             HotShader::new_vertex(&fill_image_path).entry_name("vertex_main".to_string()),
@@ -24,7 +31,7 @@ fn main() -> Result<(), DisplayError> {
 
     let mut frame_index: u32 = 0;
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         frame
             .render_graph
             .begin_pass("make some noise")
@@ -41,4 +48,11 @@ fn main() -> Result<(), DisplayError> {
 
         frame_index += 1;
     })
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

@@ -2,23 +2,28 @@ mod profile_with_puffin;
 
 use {
     bytemuck::{cast_slice, Pod, Zeroable},
+    clap::Parser,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
+    screen_13_window::{WindowBuilder, WindowError},
     std::sync::Arc,
+    winit::dpi::LogicalSize,
 };
 
-fn main() -> Result<(), DisplayError> {
+fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let event_loop = EventLoop::new()
+    let args = Args::parse();
+    let window = WindowBuilder::default()
+        .debug(args.debug)
         .window(|window| window.with_inner_size(LogicalSize::new(512, 512)))
         .build()?;
-    let images = create_images(&event_loop.device)?;
-    let pipeline = create_graphic_pipeline(&event_loop.device)?;
-    let draw_buf = create_indirect_buffer(&event_loop.device)?;
+    let images = create_images(&window.device)?;
+    let pipeline = create_graphic_pipeline(&window.device)?;
+    let draw_buf = create_indirect_buffer(&window.device)?;
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         let draw_buf_node = frame.render_graph.bind_node(&draw_buf);
 
         let mut pass = frame
@@ -40,7 +45,7 @@ fn main() -> Result<(), DisplayError> {
     })
 }
 
-fn create_images(device: &Arc<Device>) -> Result<Vec<Arc<Image>>, DisplayError> {
+fn create_images(device: &Arc<Device>) -> Result<Vec<Arc<Image>>, DriverError> {
     let mut textures = Vec::with_capacity(64);
 
     let (b, a) = (0.0, 1.0);
@@ -147,6 +152,13 @@ fn create_graphic_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>,
             ),
         ],
     )?))
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }
 
 #[repr(C)]

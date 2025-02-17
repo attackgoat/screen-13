@@ -1,4 +1,5 @@
 use {
+    clap::Parser,
     screen_13::prelude::*,
     std::{sync::Arc, time::Instant},
 };
@@ -8,8 +9,10 @@ use {
 fn main() -> Result<(), DriverError> {
     pretty_env_logger::init();
 
-    // For this example we directly create a device, but the same thing works using an event loop
-    let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
+    // For this example we create a headless device, but the same thing works using a window
+    let args = Args::parse();
+    let device_info = DeviceInfoBuilder::default().debug(args.debug);
+    let device = Arc::new(Device::create_headless(device_info)?);
 
     let mut render_graph = RenderGraph::new();
 
@@ -36,7 +39,7 @@ fn main() -> Result<(), DriverError> {
 
     // Resolve and wait (or you can check has_executed without blocking) - alternatively you might
     // use device.queue_wait_idle(0) or device.device_wait_idle() - but those block on larger scopes
-    let cmd_buf = render_graph
+    let mut cmd_buf = render_graph
         .resolve()
         .submit(&mut HashPool::new(&device), 0, 0)?;
 
@@ -52,5 +55,14 @@ fn main() -> Result<(), DriverError> {
     println!("Waited {}μs", (Instant::now() - started).as_micros());
 
     // It is now safe to read back what we did!
-    Ok(println!("{:?}", Buffer::mapped_slice(&dst_buf)))
+    println!("{:?}", Buffer::mapped_slice(&dst_buf));
+
+    Ok(())
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Enable Vulkan SDK validation layers
+    #[arg(long)]
+    debug: bool,
 }

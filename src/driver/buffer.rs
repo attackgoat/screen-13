@@ -1,7 +1,7 @@
 //! Buffer resource types
 
 use {
-    super::{access_type_from_u8, access_type_into_u8, device::Device, DriverError},
+    super::{device::Device, DriverError},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
@@ -13,15 +13,18 @@ use {
     std::{
         fmt::{Debug, Formatter},
         mem::ManuallyDrop,
-        ops::{Deref, Range},
-        sync::{
-            atomic::{AtomicU8, Ordering},
-            Arc,
-        },
+        ops::{Deref, DerefMut, Range},
+        sync::Arc,
         thread::panicking,
     },
     vk_sync::AccessType,
 };
+
+#[cfg(feature = "parking_lot")]
+use parking_lot::Mutex;
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 /// Smart pointer handle to a [buffer] object.
 ///
@@ -41,7 +44,7 @@ use {
 /// # use screen_13::driver::device::{Device, DeviceInfo};
 /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
 /// # fn main() -> Result<(), DriverError> {
-/// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+/// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 /// # let info = BufferInfo::device_mem(8, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
 /// # let my_buf = Buffer::create(&device, info)?;
 /// let addr = Buffer::device_address(&my_buf);
@@ -52,6 +55,7 @@ use {
 /// [deref]: core::ops::Deref
 /// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 pub struct Buffer {
+    accesses: Mutex<BufferAccess>,
     allocation: ManuallyDrop<Allocation>,
     buffer: vk::Buffer,
     device: Arc<Device>,
@@ -61,8 +65,6 @@ pub struct Buffer {
 
     /// A name for debugging purposes.
     pub name: Option<String>,
-
-    prev_access: AtomicU8,
 }
 
 impl Buffer {
@@ -79,7 +81,7 @@ impl Buffer {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// const SIZE: vk::DeviceSize = 1024;
     /// let info = BufferInfo::host_mem(SIZE, vk::BufferUsageFlags::UNIFORM_BUFFER);
     /// let buf = Buffer::create(&device, info)?;
@@ -97,7 +99,7 @@ impl Buffer {
         debug_assert_ne!(info.size, 0, "Size must be non-zero");
 
         let device = Arc::clone(device);
-        let buffer_info = vk::BufferCreateInfo::builder()
+        let buffer_info = vk::BufferCreateInfo::default()
             .size(info.size)
             .usage(info.usage)
             .sharing_mode(vk::SharingMode::CONCURRENT)
@@ -153,12 +155,12 @@ impl Buffer {
         };
 
         Ok(Self {
+            accesses: Mutex::new(BufferAccess::new(info.size)),
             allocation: ManuallyDrop::new(allocation),
             buffer,
             device,
             info,
             name: None,
-            prev_access: AtomicU8::new(access_type_into_u8(AccessType::Nothing)),
         })
     }
 
@@ -175,7 +177,7 @@ impl Buffer {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// const DATA: [u8; 4] = [0xfe, 0xed, 0xbe, 0xef];
     /// let buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::UNIFORM_BUFFER, &DATA)?;
     ///
@@ -218,36 +220,54 @@ impl Buffer {
     /// # use ash::vk;
     /// # use screen_13::driver::{AccessType, DriverError};
     /// # use screen_13::driver::device::{Device, DeviceInfo};
-    /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
+    /// # use screen_13::driver::buffer::{Buffer, BufferInfo, BufferSubresourceRange};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # const SIZE: vk::DeviceSize = 1024;
     /// # let info = BufferInfo::device_mem(SIZE, vk::BufferUsageFlags::STORAGE_BUFFER);
     /// # let my_buf = Buffer::create(&device, info)?;
-    /// // Initially we want to "Read Other"
-    /// let next = AccessType::ComputeShaderReadOther;
-    /// let prev = Buffer::access(&my_buf, next);
-    /// assert_eq!(prev, AccessType::Nothing);
+    /// // Initially we want to "write"
+    /// let access = AccessType::ComputeShaderWrite;
+    /// let access_range = BufferSubresourceRange { start: 0, end: SIZE };
+    /// let mut accesses = Buffer::access(&my_buf, access, access_range);
     ///
-    /// // External code may now "Read Other"; no barrier required
+    /// assert_eq!(accesses.next(), Some((AccessType::Nothing, access_range)));
+    /// assert!(accesses.next().is_none());
     ///
-    /// // Subsequently we want to "Write"
-    /// let next = AccessType::ComputeShaderWrite;
-    /// let prev = Buffer::access(&my_buf, next);
-    /// assert_eq!(prev, AccessType::ComputeShaderReadOther);
+    /// // External code may now "write"; no barrier required in this case
     ///
-    /// // A barrier on "Read Other" before "Write" is required!
+    /// // Subsequently we want to "read"
+    /// let access = AccessType::ComputeShaderReadOther;
+    /// let mut accesses = Buffer::access(&my_buf, access, access_range);
+    ///
+    /// assert_eq!(accesses.next(), Some((AccessType::ComputeShaderWrite, access_range)));
+    /// assert!(accesses.next().is_none());
+    ///
+    /// // A barrier on "write" before "read" is required! A render graph will do this
+    /// // automatically when resovled, but manual access like this requires manual barriers
     /// # Ok(()) }
     /// ```
     ///
     /// [_Ash_]: https://crates.io/crates/ash
     /// [_Erupt_]: https://crates.io/crates/erupt
     #[profiling::function]
-    pub fn access(this: &Self, next_access: AccessType) -> AccessType {
-        access_type_from_u8(
-            this.prev_access
-                .swap(access_type_into_u8(next_access), Ordering::Relaxed),
-        )
+    pub fn access(
+        this: &Self,
+        access: AccessType,
+        access_range: impl Into<BufferSubresourceRange>,
+    ) -> impl Iterator<Item = (AccessType, BufferSubresourceRange)> + '_ {
+        let mut access_range: BufferSubresourceRange = access_range.into();
+
+        if access_range.end == vk::WHOLE_SIZE {
+            access_range.end = this.info.size;
+        }
+
+        let accesses = this.accesses.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let accesses = accesses.unwrap();
+
+        BufferAccessIter::new(accesses, access, access_range)
     }
 
     /// Updates a mappable buffer starting at `offset` with the data in `slice`.
@@ -267,7 +287,7 @@ impl Buffer {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let info = BufferInfo::host_mem(4, vk::BufferUsageFlags::empty());
     /// # let mut my_buf = Buffer::create(&device, info)?;
     /// const DATA: [u8; 4] = [0xde, 0xad, 0xc0, 0xde];
@@ -300,7 +320,7 @@ impl Buffer {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # let info = BufferInfo::host_mem(4, vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS);
     /// # let my_buf = Buffer::create(&device, info)?;
     /// let addr = Buffer::device_address(&my_buf);
@@ -310,9 +330,14 @@ impl Buffer {
     /// ```
     #[profiling::function]
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
+        debug_assert!(this
+            .info
+            .usage
+            .contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS));
+
         unsafe {
             this.device.get_buffer_device_address(
-                &vk::BufferDeviceAddressInfo::builder().buffer(this.buffer),
+                &vk::BufferDeviceAddressInfo::default().buffer(this.buffer),
             )
         }
     }
@@ -334,7 +359,7 @@ impl Buffer {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # const DATA: [u8; 4] = [0; 4];
     /// # let my_buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::empty(), &DATA)?;
     /// // my_buf is mappable and filled with four zeroes
@@ -372,7 +397,7 @@ impl Buffer {
     /// # use screen_13::driver::device::{Device, DeviceInfo};
     /// # use screen_13::driver::buffer::{Buffer, BufferInfo};
     /// # fn main() -> Result<(), DriverError> {
-    /// # let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+    /// # let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
     /// # const DATA: [u8; 4] = [0; 4];
     /// # let mut my_buf = Buffer::create_from_slice(&device, vk::BufferUsageFlags::empty(), &DATA)?;
     /// let mut data = Buffer::mapped_slice_mut(&mut my_buf);
@@ -434,6 +459,224 @@ impl Drop for Buffer {
         unsafe {
             self.device.destroy_buffer(self.buffer, None);
         }
+    }
+}
+
+#[derive(Debug)]
+struct BufferAccess {
+    accesses: Vec<(AccessType, vk::DeviceSize)>,
+    size: vk::DeviceSize,
+}
+
+impl BufferAccess {
+    fn new(size: vk::DeviceSize) -> Self {
+        Self {
+            accesses: vec![(AccessType::Nothing, 0)],
+            size,
+        }
+    }
+}
+
+struct BufferAccessIter<T> {
+    access: AccessType,
+    access_range: BufferSubresourceRange,
+    buffer: T,
+    idx: usize,
+}
+
+impl<T> BufferAccessIter<T>
+where
+    T: DerefMut<Target = BufferAccess>,
+{
+    fn new(buffer: T, access: AccessType, access_range: BufferSubresourceRange) -> Self {
+        debug_assert!(access_range.start < access_range.end);
+        debug_assert!(access_range.end <= buffer.size);
+
+        #[cfg(debug_assertions)]
+        {
+            let access_start = |(_, access_start): &(AccessType, vk::DeviceSize)| *access_start;
+
+            assert_eq!(buffer.accesses.first().map(access_start), Some(0));
+            assert!(buffer.accesses.last().map(access_start).unwrap() < buffer.size);
+
+            // Custom is-sorted-by key to additionally check that all access starts are unique
+            let (mut prev_access, mut prev_start) = buffer.accesses.first().copied().unwrap();
+            for (next_access, next_start) in buffer.accesses.iter().skip(1).copied() {
+                debug_assert_ne!(prev_access, next_access);
+                debug_assert!(prev_start < next_start);
+
+                prev_access = next_access;
+                prev_start = next_start;
+            }
+        };
+
+        // The needle will always be odd, and the probe always even, the result will always be err
+        let needle = access_range.start << 1 | 1;
+        let idx = buffer
+            .accesses
+            .binary_search_by(|(_, probe)| (probe << 1).cmp(&needle));
+
+        debug_assert!(idx.is_err());
+
+        let mut idx = unsafe { idx.unwrap_err_unchecked() };
+
+        // The first access will always be at start == 0, which is even, so idx cannot be 0
+        debug_assert_ne!(idx, 0);
+
+        idx -= 1;
+
+        Self {
+            access,
+            access_range,
+            buffer,
+            idx,
+        }
+    }
+}
+
+impl<T> Iterator for BufferAccessIter<T>
+where
+    T: DerefMut<Target = BufferAccess>,
+{
+    type Item = (AccessType, BufferSubresourceRange);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        debug_assert!(self.access_range.start <= self.access_range.end);
+        debug_assert!(self.access_range.end <= self.buffer.size);
+
+        if self.access_range.start == self.access_range.end {
+            return None;
+        }
+
+        debug_assert!(self.buffer.accesses.get(self.idx).is_some());
+
+        let (access, access_start) = unsafe { *self.buffer.accesses.get_unchecked(self.idx) };
+        let access_end = self
+            .buffer
+            .accesses
+            .get(self.idx + 1)
+            .map(|(_, access_start)| *access_start)
+            .unwrap_or(self.buffer.size);
+        let mut access_range = self.access_range;
+
+        access_range.end = access_range.end.min(access_end);
+        self.access_range.start = access_range.end;
+
+        if access == self.access {
+            self.idx += 1;
+        } else if access_start < access_range.start {
+            if let Some((_, access_start)) = self
+                .buffer
+                .accesses
+                .get_mut(self.idx + 1)
+                .filter(|(access, _)| *access == self.access && access_end == access_range.end)
+            {
+                *access_start = access_range.start;
+                self.idx += 1;
+            } else {
+                self.idx += 1;
+                self.buffer
+                    .accesses
+                    .insert(self.idx, (self.access, access_range.start));
+
+                if access_end > access_range.end {
+                    self.buffer
+                        .accesses
+                        .insert(self.idx + 1, (access, access_range.end));
+                }
+
+                self.idx += 1;
+            }
+        } else if self.idx > 0 {
+            if self
+                .buffer
+                .accesses
+                .get(self.idx - 1)
+                .filter(|(access, _)| *access == self.access)
+                .is_some()
+            {
+                if access_end == access_range.end {
+                    self.buffer.accesses.remove(self.idx);
+
+                    if self
+                        .buffer
+                        .accesses
+                        .get(self.idx)
+                        .filter(|(access, _)| *access == self.access)
+                        .is_some()
+                    {
+                        self.buffer.accesses.remove(self.idx);
+                        self.idx -= 1;
+                    }
+                } else {
+                    debug_assert!(self.buffer.accesses.get(self.idx).is_some());
+
+                    let (_, access_start) =
+                        unsafe { self.buffer.accesses.get_unchecked_mut(self.idx) };
+                    *access_start = access_range.end;
+                }
+            } else if access_end == access_range.end {
+                debug_assert!(self.buffer.accesses.get(self.idx).is_some());
+
+                let (access, _) = unsafe { self.buffer.accesses.get_unchecked_mut(self.idx) };
+                *access = self.access;
+
+                if self
+                    .buffer
+                    .accesses
+                    .get(self.idx + 1)
+                    .filter(|(access, _)| *access == self.access)
+                    .is_some()
+                {
+                    self.buffer.accesses.remove(self.idx + 1);
+                } else {
+                    self.idx += 1;
+                }
+            } else {
+                if let Some((_, access_start)) = self.buffer.accesses.get_mut(self.idx) {
+                    *access_start = access_range.end;
+                }
+
+                self.buffer
+                    .accesses
+                    .insert(self.idx, (self.access, access_range.start));
+                self.idx += 2;
+            }
+        } else if let Some((_, access_start)) = self
+            .buffer
+            .accesses
+            .get_mut(1)
+            .filter(|(access, _)| *access == self.access && access_end == access_range.end)
+        {
+            *access_start = 0;
+            self.buffer.accesses.remove(0);
+        } else if access_end > access_range.end {
+            self.buffer.accesses.insert(0, (self.access, 0));
+
+            debug_assert!(self.buffer.accesses.get(1).is_some());
+
+            let (_, access_start) = unsafe { self.buffer.accesses.get_unchecked_mut(1) };
+            *access_start = access_range.end;
+        } else {
+            debug_assert!(!self.buffer.accesses.is_empty());
+
+            let (access, _) = unsafe { self.buffer.accesses.get_unchecked_mut(0) };
+            *access = self.access;
+
+            if self
+                .buffer
+                .accesses
+                .get(1)
+                .filter(|(access, _)| *access == self.access)
+                .is_some()
+            {
+                self.buffer.accesses.remove(1);
+            } else {
+                self.idx += 1;
+            }
+        }
+
+        Some((access, access_range))
     }
 }
 
@@ -577,8 +820,8 @@ impl From<UninitializedFieldError> for BufferInfoBuilderError {
 }
 
 /// Specifies a range of buffer data.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct BufferSubresource {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BufferSubresourceRange {
     /// The start of range.
     pub start: vk::DeviceSize,
 
@@ -586,7 +829,14 @@ pub struct BufferSubresource {
     pub end: vk::DeviceSize,
 }
 
-impl From<BufferInfo> for BufferSubresource {
+impl BufferSubresourceRange {
+    #[cfg(test)]
+    pub(crate) fn intersects(self, other: Self) -> bool {
+        self.start < other.end && self.end > other.start
+    }
+}
+
+impl From<BufferInfo> for BufferSubresourceRange {
     fn from(info: BufferInfo) -> Self {
         Self {
             start: 0,
@@ -595,7 +845,7 @@ impl From<BufferInfo> for BufferSubresource {
     }
 }
 
-impl From<Range<vk::DeviceSize>> for BufferSubresource {
+impl From<Range<vk::DeviceSize>> for BufferSubresourceRange {
     fn from(range: Range<vk::DeviceSize>) -> Self {
         Self {
             start: range.start,
@@ -604,24 +854,418 @@ impl From<Range<vk::DeviceSize>> for BufferSubresource {
     }
 }
 
-impl From<Option<Range<vk::DeviceSize>>> for BufferSubresource {
+impl From<Option<Range<vk::DeviceSize>>> for BufferSubresourceRange {
     fn from(range: Option<Range<vk::DeviceSize>>) -> Self {
         range.unwrap_or(0..vk::WHOLE_SIZE).into()
     }
 }
 
-impl From<BufferSubresource> for Range<vk::DeviceSize> {
-    fn from(subresource: BufferSubresource) -> Self {
+impl From<BufferSubresourceRange> for Range<vk::DeviceSize> {
+    fn from(subresource: BufferSubresourceRange) -> Self {
         subresource.start..subresource.end
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        rand::{rngs::SmallRng, Rng, SeedableRng},
+    };
 
     type Info = BufferInfo;
     type Builder = BufferInfoBuilder;
+
+    const FUZZ_COUNT: usize = 100_000;
+
+    #[test]
+    pub fn buffer_access() {
+        let mut buffer = BufferAccess::new(100);
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::TransferWrite,
+                buffer_subresource_range(0..10),
+            );
+
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::Nothing, 0)]);
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::Nothing, buffer_subresource_range(0..10))
+            );
+            assert_eq!(
+                accesses.buffer.accesses,
+                vec![(AccessType::TransferWrite, 0), (AccessType::Nothing, 10)]
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::TransferRead,
+                buffer_subresource_range(5..15),
+            );
+
+            assert_eq!(
+                accesses.buffer.accesses,
+                vec![(AccessType::TransferWrite, 0), (AccessType::Nothing, 10)]
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::TransferWrite, buffer_subresource_range(5..10))
+            );
+            assert_eq!(
+                accesses.buffer.accesses,
+                vec![
+                    (AccessType::TransferWrite, 0),
+                    (AccessType::TransferRead, 5),
+                    (AccessType::Nothing, 10)
+                ]
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::Nothing, buffer_subresource_range(10..15))
+            );
+            assert_eq!(
+                accesses.buffer.accesses,
+                vec![
+                    (AccessType::TransferWrite, 0),
+                    (AccessType::TransferRead, 5),
+                    (AccessType::Nothing, 15)
+                ]
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::HostRead,
+                buffer_subresource_range(0..100),
+            );
+
+            assert_eq!(
+                accesses.buffer.accesses,
+                vec![
+                    (AccessType::TransferWrite, 0),
+                    (AccessType::TransferRead, 5),
+                    (AccessType::Nothing, 15)
+                ]
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::TransferWrite, buffer_subresource_range(0..5))
+            );
+            assert_eq!(
+                accesses.buffer.accesses,
+                vec![
+                    (AccessType::HostRead, 0),
+                    (AccessType::TransferRead, 5),
+                    (AccessType::Nothing, 15)
+                ]
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::TransferRead, buffer_subresource_range(5..15))
+            );
+            assert_eq!(
+                accesses.buffer.accesses,
+                vec![(AccessType::HostRead, 0), (AccessType::Nothing, 15)]
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::Nothing, buffer_subresource_range(15..100))
+            );
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::HostRead, 0),]);
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::HostWrite,
+                buffer_subresource_range(0..100),
+            );
+
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::HostRead, 0)]);
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::HostRead, buffer_subresource_range(0..100))
+            );
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::HostWrite, 0)]);
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::HostWrite,
+                buffer_subresource_range(0..100),
+            );
+
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::HostWrite, 0)]);
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::HostWrite, buffer_subresource_range(0..100))
+            );
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::HostWrite, 0)]);
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::HostWrite,
+                buffer_subresource_range(1..99),
+            );
+
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::HostWrite, 0)]);
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::HostWrite, buffer_subresource_range(1..99))
+            );
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::HostWrite, 0)]);
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::HostRead,
+                buffer_subresource_range(1..99),
+            );
+
+            assert_eq!(accesses.buffer.accesses, vec![(AccessType::HostWrite, 0)]);
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::HostWrite, buffer_subresource_range(1..99))
+            );
+            assert_eq!(
+                accesses.buffer.accesses,
+                vec![
+                    (AccessType::HostWrite, 0),
+                    (AccessType::HostRead, 1),
+                    (AccessType::HostWrite, 99)
+                ]
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::Nothing,
+                buffer_subresource_range(0..100),
+            );
+
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::HostWrite, buffer_subresource_range(0..1))
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::HostRead, buffer_subresource_range(1..99))
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::HostWrite, buffer_subresource_range(99..100))
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::AnyShaderWrite,
+                buffer_subresource_range(0..100),
+            );
+
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::Nothing, buffer_subresource_range(0..100))
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::AnyShaderReadOther,
+                buffer_subresource_range(1..2),
+            );
+
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::AnyShaderWrite, buffer_subresource_range(1..2))
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::AnyShaderReadOther,
+                buffer_subresource_range(3..4),
+            );
+
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::AnyShaderWrite, buffer_subresource_range(3..4))
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::Nothing,
+                buffer_subresource_range(0..5),
+            );
+
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::AnyShaderWrite, buffer_subresource_range(0..1))
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderReadOther,
+                    buffer_subresource_range(1..2)
+                )
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::AnyShaderWrite, buffer_subresource_range(2..3))
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (
+                    AccessType::AnyShaderReadOther,
+                    buffer_subresource_range(3..4)
+                )
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::AnyShaderWrite, buffer_subresource_range(4..5))
+            );
+            assert!(accesses.next().is_none());
+        }
+    }
+
+    #[test]
+    pub fn buffer_access_basic() {
+        let mut buffer = BufferAccess::new(5);
+
+        buffer.accesses = vec![
+            (AccessType::ColorAttachmentRead, 0),
+            (AccessType::AnyShaderWrite, 4),
+        ];
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::AnyShaderWrite,
+                buffer_subresource_range(0..2),
+            );
+
+            assert_eq!(
+                accesses.next().unwrap(),
+                (
+                    AccessType::ColorAttachmentRead,
+                    buffer_subresource_range(0..2)
+                )
+            );
+            assert!(accesses.next().is_none());
+        }
+
+        {
+            let mut accesses = BufferAccessIter::new(
+                &mut buffer,
+                AccessType::HostWrite,
+                buffer_subresource_range(0..5),
+            );
+
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::AnyShaderWrite, buffer_subresource_range(0..2))
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (
+                    AccessType::ColorAttachmentRead,
+                    buffer_subresource_range(2..4)
+                )
+            );
+            assert_eq!(
+                accesses.next().unwrap(),
+                (AccessType::AnyShaderWrite, buffer_subresource_range(4..5))
+            );
+
+            assert!(accesses.next().is_none());
+        }
+    }
+
+    fn buffer_access_fuzz(buffer_size: vk::DeviceSize) {
+        static ACCESS_TYPES: &[AccessType] = &[
+            AccessType::AnyShaderReadOther,
+            AccessType::AnyShaderWrite,
+            AccessType::ColorAttachmentRead,
+            AccessType::ColorAttachmentWrite,
+            AccessType::HostRead,
+            AccessType::HostWrite,
+            AccessType::Nothing,
+        ];
+
+        let mut rng = SmallRng::seed_from_u64(42);
+        let mut buffer = BufferAccess::new(buffer_size);
+        let mut data = vec![AccessType::Nothing; buffer_size as usize];
+
+        for _ in 0..FUZZ_COUNT {
+            let access = ACCESS_TYPES[rng.random_range(..ACCESS_TYPES.len())];
+            let access_start = rng.random_range(..buffer_size);
+            let access_end = rng.random_range(access_start + 1..=buffer_size);
+
+            // println!("{access:?} {access_start}..{access_end}");
+
+            let accesses = BufferAccessIter::new(
+                &mut buffer,
+                access,
+                buffer_subresource_range(access_start..access_end),
+            );
+
+            for (access, access_range) in accesses {
+                // println!("\t{access:?} {}..{}", access_range.start, access_range.end);
+                assert!(
+                    data[access_range.start as usize..access_range.end as usize]
+                        .iter()
+                        .all(|data| *data == access),
+                    "{:?}",
+                    &data[access_range.start as usize..access_range.end as usize]
+                );
+            }
+
+            for data in &mut data[access_start as usize..access_end as usize] {
+                *data = access;
+            }
+        }
+    }
+
+    #[test]
+    pub fn buffer_access_fuzz_small() {
+        buffer_access_fuzz(5);
+    }
+
+    #[test]
+    pub fn buffer_access_fuzz_medium() {
+        buffer_access_fuzz(101);
+    }
+
+    #[test]
+    pub fn buffer_access_fuzz_large() {
+        buffer_access_fuzz(10_000);
+    }
 
     #[test]
     pub fn buffer_info() {
@@ -672,5 +1316,31 @@ mod tests {
     #[should_panic(expected = "Field not initialized: size")]
     pub fn buffer_info_builder_uninit_size() {
         Builder::default().build();
+    }
+
+    fn buffer_subresource_range(
+        Range { start, end }: Range<vk::DeviceSize>,
+    ) -> BufferSubresourceRange {
+        BufferSubresourceRange { start, end }
+    }
+
+    #[test]
+    pub fn buffer_subresource_range_intersects() {
+        use BufferSubresourceRange as B;
+
+        assert!(!B { start: 10, end: 20 }.intersects(B { start: 0, end: 5 }));
+        assert!(!B { start: 10, end: 20 }.intersects(B { start: 5, end: 10 }));
+        assert!(B { start: 10, end: 20 }.intersects(B { start: 10, end: 15 }));
+        assert!(B { start: 10, end: 20 }.intersects(B { start: 15, end: 20 }));
+        assert!(!B { start: 10, end: 20 }.intersects(B { start: 20, end: 25 }));
+        assert!(!B { start: 10, end: 20 }.intersects(B { start: 25, end: 30 }));
+
+        assert!(!B { start: 5, end: 10 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 5, end: 25 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 5, end: 15 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 10, end: 20 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 11, end: 19 }.intersects(B { start: 10, end: 20 }));
+        assert!(B { start: 15, end: 25 }.intersects(B { start: 10, end: 20 }));
+        assert!(!B { start: 20, end: 25 }.intersects(B { start: 10, end: 20 }));
     }
 }

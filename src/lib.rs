@@ -16,15 +16,15 @@ using the provided [`FrameContext`] closure. The [`EventLoop`] builder handles c
 of the [`Device`] driver, however you may construct one manually for headless rendering.
 
 ```no_run
-use screen_13::prelude::*;
+use screen_13_window::{Window, WindowError};
 
-fn main() -> Result<(), DisplayError> {
-    let event_loop = EventLoop::new().build()?;
+fn main() -> Result<(), WindowError> {
+    let window = Window::new()?;
 
     // Use the device to create resources and pipelines before running
-    let device = &event_loop.device;
+    let device = &window.device;
 
-    event_loop.run(|frame| {
+    window.run(|frame| {
         // You may also create resources and pipelines while running
         let device = &frame.device;
     })
@@ -56,7 +56,7 @@ For example, a typical host-mappable buffer:
 # use screen_13::driver::device::{Device, DeviceInfo};
 # use screen_13::driver::buffer::{Buffer, BufferInfo};
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 let info = BufferInfo::host_mem(1024, vk::BufferUsageFlags::STORAGE_BUFFER);
 let my_buf = Buffer::create(&device, info)?;
 # Ok(()) }
@@ -78,7 +78,7 @@ For example, a graphics pipeline:
 # use screen_13::driver::graphic::{GraphicPipeline, GraphicPipelineInfo};
 # use screen_13::driver::shader::Shader;
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 # let my_frag_code = [0u8; 1];
 # let my_vert_code = [0u8; 1];
 // shader code is raw SPIR-V code as bytes
@@ -240,7 +240,7 @@ Pipeline instances may be bound to a [`PassRef`] in order to execute the associa
 # use screen_13::driver::shader::{Shader};
 # use screen_13::graph::RenderGraph;
 # fn main() -> Result<(), DriverError> {
-# let device = Arc::new(Device::create_headless(DeviceInfo::new())?);
+# let device = Arc::new(Device::create_headless(DeviceInfo::default())?);
 # let my_shader_code = [0u8; 1];
 # let info = ComputePipelineInfo::default();
 # let shader = Shader::new_compute(my_shader_code.as_slice());
@@ -325,90 +325,68 @@ pub mod graph;
 pub mod pool;
 
 mod display;
-mod event_loop;
-mod frame;
 
 /// Things which are used in almost every single _Screen 13_ program.
 pub mod prelude {
-    pub use {
-        super::{
-            display::{Display, DisplayError, ResolverPool},
-            driver::{
-                accel_struct::{
-                    AccelerationStructure, AccelerationStructureGeometry,
-                    AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
-                    AccelerationStructureInfo, AccelerationStructureInfoBuilder,
-                    AccelerationStructureSize, DeviceOrHostAddress,
-                },
-                buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresource},
-                compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
-                device::{Device, DeviceInfo, DeviceInfoBuilder},
-                graphic::{
-                    BlendMode, BlendModeBuilder, DepthStencilMode, DepthStencilModeBuilder,
-                    GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder, StencilMode,
-                },
-                image::{
-                    Image, ImageInfo, ImageInfoBuilder, ImageSubresource, ImageType, ImageViewInfo,
-                    ImageViewInfoBuilder, SampleCount,
-                },
-                physical_device::{
-                    AccelerationStructureProperties, PhysicalDevice, RayQueryFeatures,
-                    RayTraceFeatures, RayTraceProperties, Vulkan10Features, Vulkan10Limits,
-                    Vulkan10Properties, Vulkan11Features, Vulkan11Properties, Vulkan12Features,
-                    Vulkan12Properties,
-                },
-                ray_trace::{
-                    RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
-                    RayTraceShaderGroup, RayTraceShaderGroupType,
-                },
-                render_pass::ResolveMode,
-                shader::{
-                    SamplerInfo, SamplerInfoBuilder, Shader, ShaderBuilder, ShaderCode,
-                    SpecializationInfo,
-                },
-                surface::Surface,
-                swapchain::{
-                    Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
-                },
-                AccessType, CommandBuffer, DriverError, Instance,
+    pub use super::{
+        display::{Display, DisplayError, DisplayInfo, DisplayInfoBuilder, ResolverPool},
+        driver::{
+            accel_struct::{
+                AccelerationStructure, AccelerationStructureGeometry,
+                AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
+                AccelerationStructureInfo, AccelerationStructureInfoBuilder,
+                AccelerationStructureSize, DeviceOrHostAddress,
             },
-            event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
-            frame::{center_cursor, set_cursor_position, FrameContext},
-            graph::{
-                node::{
-                    AccelerationStructureLeaseNode, AccelerationStructureNode,
-                    AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode,
-                    BufferNode, ImageLeaseNode, ImageNode, SwapchainImageNode,
-                },
-                pass_ref::{PassRef, PipelinePassRef},
-                Bind, ClearColorValue, RenderGraph, Unbind,
+            ash::vk,
+            buffer::{Buffer, BufferInfo, BufferInfoBuilder, BufferSubresourceRange},
+            compute::{ComputePipeline, ComputePipelineInfo, ComputePipelineInfoBuilder},
+            device::{Device, DeviceInfo, DeviceInfoBuilder},
+            graphic::{
+                BlendMode, BlendModeBuilder, DepthStencilMode, DepthStencilModeBuilder,
+                GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder, StencilMode,
             },
-            pool::{
-                alias::{Alias, AliasPool},
-                fifo::FifoPool,
-                hash::HashPool,
-                lazy::LazyPool,
-                Lease, Pool, PoolInfo, PoolInfoBuilder,
+            image::{
+                Image, ImageInfo, ImageInfoBuilder, ImageType, ImageViewInfo, ImageViewInfoBuilder,
+                SampleCount,
             },
+            physical_device::{
+                AccelerationStructureProperties, PhysicalDevice, RayQueryFeatures,
+                RayTraceFeatures, RayTraceProperties, Vulkan10Features, Vulkan10Limits,
+                Vulkan10Properties, Vulkan11Features, Vulkan11Properties, Vulkan12Features,
+                Vulkan12Properties,
+            },
+            ray_trace::{
+                RayTracePipeline, RayTracePipelineInfo, RayTracePipelineInfoBuilder,
+                RayTraceShaderGroup, RayTraceShaderGroupType,
+            },
+            render_pass::ResolveMode,
+            shader::{
+                SamplerInfo, SamplerInfoBuilder, Shader, ShaderBuilder, ShaderCode,
+                SpecializationInfo,
+            },
+            surface::Surface,
+            swapchain::{
+                Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
+            },
+            AccessType, CommandBuffer, DriverError, Instance,
         },
-        ash::vk,
-        log::{debug, error, info, logger, trace, warn}, // Everyone wants a log
-        winit::{
-            self,
-            dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
-            event::{Event, MouseButton, WindowEvent},
-            keyboard::KeyCode,
-            monitor::{MonitorHandle, VideoMode},
-            window::{
-                BadIcon, CursorGrabMode, CursorIcon, Fullscreen, Icon, Theme, UserAttentionType,
-                Window, WindowBuilder, WindowId,
+        graph::{
+            node::{
+                AccelerationStructureLeaseNode, AccelerationStructureNode,
+                AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode,
+                BufferNode, ImageLeaseNode, ImageNode, SwapchainImageNode,
             },
+            pass_ref::{PassRef, PipelinePassRef},
+            Bind, ClearColorValue, RenderGraph, Unbind,
+        },
+        pool::{
+            alias::{Alias, AliasPool},
+            fifo::FifoPool,
+            hash::HashPool,
+            lazy::LazyPool,
+            Lease, Pool, PoolInfo, PoolInfoBuilder,
         },
     };
 }
 
-pub use self::{
-    display::{Display, DisplayError, ResolverPool},
-    event_loop::{EventLoop, EventLoopBuilder, FullscreenMode},
-    frame::FrameContext,
-};
+pub use self::display::{Display, DisplayError, DisplayInfo, DisplayInfoBuilder, ResolverPool};

@@ -1,11 +1,10 @@
 use {
-    super::BitmapFont, anyhow::Context, bmfont::BMFont, inline_spirv::include_spirv,
+    super::BitmapFont, anyhow::Context, bmfont::BMFont, inline_spirv::include_spirv, log::info,
     screen_13::prelude::*, std::sync::Arc,
 };
 
-fn align_up_u32(val: u32, atom: u32) -> u32 {
-    (val + atom - 1) & !(atom - 1)
-}
+#[cfg(debug_assertions)]
+use log::warn;
 
 /// Describes the channels and pixel stride of an image format
 #[derive(Clone, Copy, Debug)]
@@ -130,7 +129,7 @@ impl ImageLoader {
         );
 
         #[cfg(debug_assertions)]
-        if pixels.len() > align_up_u32(format.stride() as u32 * width * height, 4) as usize {
+        if pixels.len() > (format.stride() as u32 * width * height).next_multiple_of(4) as usize {
             warn!("unused data");
         }
 
@@ -153,7 +152,7 @@ impl ImageLoader {
 
                 //trace!("{bitmap_width}x{bitmap_height} Stride={bitmap_stride}");
 
-                let pixel_buf_stride = align_up_u32(stride, 12);
+                let pixel_buf_stride = stride.next_multiple_of(12);
                 let pixel_buf_len = (pixel_buf_stride * height) as vk::DeviceSize;
 
                 //trace!("pixel_buf_len={pixel_buf_len} pixel_buf_stride={pixel_buf_stride}");
