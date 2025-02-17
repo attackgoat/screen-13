@@ -1,21 +1,31 @@
 use {
     super::{physical_device::PhysicalDevice, DriverError},
     ash::{ext, vk, Entry},
-    log::{debug, error, info, logger, trace, warn, Level, Metadata},
+    log::{debug, error, trace, warn},
     std::{
-        env::var,
-        ffi::{c_void, CStr, CString},
+        ffi::{CStr, CString},
         fmt::{Debug, Formatter},
         ops::Deref,
         os::raw::c_char,
+        thread::panicking,
+    },
+};
+
+#[cfg(not(target_os = "macos"))]
+use {
+    log::{info, logger, Level, Metadata},
+    std::{
+        env::var,
+        ffi::c_void,
         process::id,
-        thread::{current, panicking, park},
+        thread::{current, park},
     },
 };
 
 #[cfg(target_os = "macos")]
 use std::env::set_var;
 
+#[cfg(not(target_os = "macos"))]
 unsafe extern "system" fn vulkan_debug_callback(
     _flags: vk::DebugReportFlagsEXT,
     _obj_type: vk::DebugReportObjectTypeEXT,
