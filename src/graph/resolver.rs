@@ -749,7 +749,7 @@ impl Resolver {
         pass: &Pass,
     ) -> Result<Option<Lease<DescriptorPool>>, DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool>,
     {
         let max_set_idx = pass
             .execs
@@ -851,7 +851,7 @@ impl Resolver {
         pass_idx: usize,
     ) -> Result<Lease<RenderPass>, DriverError>
     where
-        P: Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<RenderPassInfo, RenderPass>,
     {
         let pass = &self.graph.passes[pass_idx];
         let (mut color_attachment_count, mut depth_stencil_attachment_count) = (0, 0);
@@ -1660,7 +1660,7 @@ impl Resolver {
         schedule: &[usize],
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         for pass_idx in schedule.iter().copied() {
             // At the time this function runs the pass will already have been optimized into a
@@ -1872,7 +1872,7 @@ impl Resolver {
         trace_pad: &'static str,
         cmd_buf: &CommandBuffer,
         bindings: &mut [Binding],
-        accesses: impl IntoIterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
+        accesses: impl Iterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
     ) {
         use std::slice::from_ref;
 
@@ -2132,7 +2132,7 @@ impl Resolver {
         node: impl Node,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         let node_idx = node.index();
 
@@ -2155,7 +2155,7 @@ impl Resolver {
         end_pass_idx: usize,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         thread_local! {
             static SCHEDULE: RefCell<Schedule> = Default::default();
@@ -2179,7 +2179,7 @@ impl Resolver {
         end_pass_idx: usize,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         if schedule.passes.is_empty() {
             return Ok(());
@@ -2219,7 +2219,7 @@ impl Resolver {
                 "  ",
                 cmd_buf,
                 &mut self.graph.bindings,
-                &pass.execs[0].accesses,
+                pass.execs[0].accesses.iter(),
             );
 
             let render_area = if is_graphic {
@@ -2295,7 +2295,7 @@ impl Resolver {
                         "    ",
                         cmd_buf,
                         &mut self.graph.bindings,
-                        &exec.accesses,
+                        exec.accesses.iter(),
                     );
                 }
 
@@ -2367,7 +2367,7 @@ impl Resolver {
         cmd_buf: &mut CommandBuffer,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         if self.graph.passes.is_empty() {
             return Ok(());

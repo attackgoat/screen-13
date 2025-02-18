@@ -2664,8 +2664,7 @@ where
         <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = view_info.into();
-        let subresource =
-            <N as View>::Subresource::from(<N as View>::Information::clone(&view_info));
+        let subresource = <N as View>::Subresource::from(view_info);
 
         self.access_descriptor_subrange(descriptor, node, access, view_info, subresource)
     }
@@ -2849,8 +2848,7 @@ where
         <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = view_info.into();
-        let subresource =
-            <N as View>::Subresource::from(<N as View>::Information::clone(&view_info));
+        let subresource = <N as View>::Subresource::from(view_info);
 
         self.read_descriptor_subrange(descriptor, node, view_info, subresource)
     }
@@ -2974,8 +2972,7 @@ where
         <N as View>::Subresource: From<<N as View>::Information>,
     {
         let view_info = view_info.into();
-        let subresource =
-            <N as View>::Subresource::from(<N as View>::Information::clone(&view_info));
+        let subresource = <N as View>::Subresource::from(view_info);
 
         self.write_descriptor_subrange(descriptor, node, view_info, subresource)
     }
@@ -5073,7 +5070,7 @@ pub(super) struct SubresourceAccess {
 /// Allows for a resource to be reinterpreted as differently formatted data.
 pub trait View: Node
 where
-    Self::Information: Clone,
+    Self::Information: Copy,
     Self::Subresource: Into<Subresource>,
 {
     /// The information about the resource interpretation.
