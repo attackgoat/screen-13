@@ -93,7 +93,7 @@ pub(crate) fn image_subresource_range_intersects(
 /// [deref]: core::ops::Deref
 /// [fully qualified syntax]: https://doc.rust-lang.org/book/ch19-03-advanced-traits.html#fully-qualified-syntax-for-disambiguation-calling-methods-with-the-same-name
 pub struct Image {
-    accesses: Mutex<ImageAccess>,
+    accesses: Mutex<ImageAccess<AccessType>>,
     allocation: Option<Allocation>, // None when we don't own the image (Swapchain images)
     pub(super) device: Arc<Device>,
     image: vk::Image,
@@ -143,7 +143,7 @@ impl Image {
             info.usage
         );
 
-        let accesses = Mutex::new(ImageAccess::new(info));
+        let accesses = Mutex::new(ImageAccess::new(info, AccessType::Nothing));
 
         let device = Arc::clone(device);
         let create_info = info
@@ -298,14 +298,9 @@ impl Image {
         let image_view_cache = take(&mut *image_view_cache);
 
         // Does NOT copy over the image accesses!
-        let Self { image, info, .. } = *this;
-        let mut accesses = ImageAccess::new(info);
-
         // Force previous access to general to wait for presentation
-        for access in &mut accesses.accesses {
-            *access = AccessType::General;
-        }
-
+        let Self { image, info, .. } = *this;
+        let accesses = ImageAccess::new(info, AccessType::General);
         let accesses = Mutex::new(accesses);
 
         Self {
@@ -359,15 +354,12 @@ impl Image {
     pub fn from_raw(device: &Arc<Device>, image: vk::Image, info: impl Into<ImageInfo>) -> Self {
         let device = Arc::clone(device);
         let info = info.into();
-        let mut accesses = ImageAccess::new(info);
 
         // For now default all image access to general, but maybe make this configurable later.
         // This helps make sure the first presentation of a swapchain image doesn't throw a
         // validation error, but it could also be very useful for raw vulkan images from other
         // sources.
-        for access in &mut accesses.accesses {
-            *access = AccessType::General;
-        }
+        let accesses = ImageAccess::new(info, AccessType::General);
 
         Self {
             accesses: Mutex::new(accesses),
@@ -433,8 +425,8 @@ impl Drop for Image {
 }
 
 #[derive(Debug)]
-struct ImageAccess {
-    accesses: Box<[AccessType]>,
+pub(crate) struct ImageAccess<A> {
+    accesses: Box<[A]>,
 
     #[cfg(debug_assertions)]
     array_layer_count: u32,
@@ -443,8 +435,11 @@ struct ImageAccess {
     mip_level_count: u32,
 }
 
-impl ImageAccess {
-    fn new(info: ImageInfo) -> Self {
+impl<A> ImageAccess<A> {
+    pub fn new(info: ImageInfo, access: A) -> Self
+    where
+        A: Copy,
+    {
         let aspect_mask = format_aspect_mask(info.fmt);
 
         #[cfg(debug_assertions)]
@@ -456,7 +451,7 @@ impl ImageAccess {
 
         Self {
             accesses: vec![
-                AccessType::Nothing;
+                access;
                 (aspect_count as u32 * array_layer_count * mip_level_count) as _
             ]
             .into_boxed_slice(),
@@ -467,6 +462,17 @@ impl ImageAccess {
             aspect_count,
             mip_level_count,
         }
+    }
+
+    pub fn access(
+        &mut self,
+        access: A,
+        access_range: vk::ImageSubresourceRange,
+    ) -> impl Iterator<Item = (A, vk::ImageSubresourceRange)> + '_
+    where
+        A: Copy + PartialEq,
+    {
+        ImageAccessIter::new(self, access, access_range)
     }
 
     fn idx(&self, aspect: u8, array_layer: u32, mip_level: u32) -> usize {
@@ -483,19 +489,19 @@ impl ImageAccess {
     }
 }
 
-struct ImageAccessIter<T> {
-    access: AccessType,
+struct ImageAccessIter<I, A> {
+    access: A,
     access_range: ImageAccessRange,
     array_layer: u32,
     aspect: u8,
-    image: T,
+    image: I,
     mip_level: u32,
 }
 
-impl<T> ImageAccessIter<T> {
-    fn new(image: T, access: AccessType, access_range: vk::ImageSubresourceRange) -> Self
+impl<I, A> ImageAccessIter<I, A> {
+    fn new(image: I, access: A, access_range: vk::ImageSubresourceRange) -> Self
     where
-        T: DerefMut<Target = ImageAccess>,
+        I: DerefMut<Target = ImageAccess<A>>,
     {
         #[cfg(debug_assertions)]
         assert_aspect_mask_supported(access_range.aspect_mask);
@@ -531,11 +537,12 @@ impl<T> ImageAccessIter<T> {
     }
 }
 
-impl<T> Iterator for ImageAccessIter<T>
+impl<I, A> Iterator for ImageAccessIter<I, A>
 where
-    T: DerefMut<Target = ImageAccess>,
+    I: DerefMut<Target = ImageAccess<A>>,
+    A: Copy + PartialEq,
 {
-    type Item = (AccessType, vk::ImageSubresourceRange);
+    type Item = (A, vk::ImageSubresourceRange);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.aspect == self.access_range.aspect_count {
@@ -1353,7 +1360,10 @@ mod tests {
     pub fn image_access_basic() {
         use vk::ImageAspectFlags as A;
 
-        let mut image = ImageAccess::new(image_subresource(vk::Format::R8G8B8A8_UNORM, 1, 1));
+        let mut image = ImageAccess::new(
+            image_subresource(vk::Format::R8G8B8A8_UNORM, 1, 1),
+            AccessType::Nothing,
+        );
 
         {
             let mut accesses = ImageAccessIter::new(
@@ -1394,7 +1404,10 @@ mod tests {
     pub fn image_access_color() {
         use vk::ImageAspectFlags as A;
 
-        let mut image = ImageAccess::new(image_subresource(vk::Format::R8G8B8A8_UNORM, 3, 3));
+        let mut image = ImageAccess::new(
+            image_subresource(vk::Format::R8G8B8A8_UNORM, 3, 3),
+            AccessType::Nothing,
+        );
 
         {
             let mut accesses = ImageAccessIter::new(
@@ -1635,7 +1648,10 @@ mod tests {
     pub fn image_access_layers() {
         use vk::ImageAspectFlags as A;
 
-        let mut image = ImageAccess::new(image_subresource(vk::Format::R8G8B8A8_UNORM, 3, 1));
+        let mut image = ImageAccess::new(
+            image_subresource(vk::Format::R8G8B8A8_UNORM, 3, 1),
+            AccessType::Nothing,
+        );
 
         {
             let mut accesses = ImageAccessIter::new(
@@ -1744,7 +1760,10 @@ mod tests {
     pub fn image_access_levels() {
         use vk::ImageAspectFlags as A;
 
-        let mut image = ImageAccess::new(image_subresource(vk::Format::R8G8B8A8_UNORM, 1, 3));
+        let mut image = ImageAccess::new(
+            image_subresource(vk::Format::R8G8B8A8_UNORM, 1, 3),
+            AccessType::Nothing,
+        );
 
         {
             let mut accesses = ImageAccessIter::new(
@@ -1853,7 +1872,10 @@ mod tests {
     pub fn image_access_depth_stencil() {
         use vk::ImageAspectFlags as A;
 
-        let mut image = ImageAccess::new(image_subresource(vk::Format::D24_UNORM_S8_UINT, 4, 3));
+        let mut image = ImageAccess::new(
+            image_subresource(vk::Format::D24_UNORM_S8_UINT, 4, 3),
+            AccessType::Nothing,
+        );
 
         {
             let mut accesses = ImageAccessIter::new(
@@ -2050,7 +2072,10 @@ mod tests {
     pub fn image_access_stencil() {
         use vk::ImageAspectFlags as A;
 
-        let mut image = ImageAccess::new(image_subresource(vk::Format::S8_UINT, 2, 2));
+        let mut image = ImageAccess::new(
+            image_subresource(vk::Format::S8_UINT, 2, 2),
+            AccessType::Nothing,
+        );
 
         {
             let mut accesses = ImageAccessIter::new(
