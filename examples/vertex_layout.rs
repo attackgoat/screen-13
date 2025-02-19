@@ -82,8 +82,6 @@ fn main() -> anyhow::Result<()> {
     window.run(|mut frame| {
         draw_triangle(&mut frame, &f32_pipeline, &f32_vertex_buf);
 
-        // (Fun fact: Screen 13 turns these two passes into one renderpass with a second subpass!)
-
         if let Some(f64_pipeline) = &f64_pipeline {
             draw_triangle(&mut frame, f64_pipeline, &f64_vertex_buf);
         } else if let Some(f16_pipeline) = &f16_pipeline {
@@ -105,7 +103,7 @@ fn draw_triangle(
         .render_graph
         .begin_pass("Triangle")
         .bind_pipeline(pipeline)
-        .clear_color(0, frame.swapchain_image)
+        .load_color(0, frame.swapchain_image)
         .store_color(0, frame.swapchain_image)
         .access_node(vertex_buf, AccessType::VertexBuffer)
         .record_subpass(move |subpass, _| {
