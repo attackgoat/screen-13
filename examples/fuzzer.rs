@@ -21,12 +21,12 @@ Also helpful to run with valgrind:
     cargo build --example fuzzer && valgrind target/debug/examples/fuzzer
 
 */
-fn main() {}
-/* NEEDS UPDATES TO LATEST CRATE CHANGES
 use {
     inline_spirv::inline_spirv,
-    rand::{seq::SliceRandom, thread_rng},
+    log::debug,
+    rand::{rng, seq::IndexedRandom},
     screen_13::prelude::*,
+    screen_13_window::{FrameContext, WindowBuilder, WindowError},
     std::{mem::size_of, sync::Arc},
 };
 
@@ -48,14 +48,14 @@ static OPERATIONS: &[Operation] = &[
     record_transfer_graphic_multipass,
 ];
 
-fn main() -> Result<(), DisplayError> {
+fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     // If ray tracing is unsupported then set that to false and remove the associated operations
-    let screen_13 = EventLoop::new().debug(true).build()?;
+    let screen_13 = WindowBuilder::default().debug(true).build()?;
     let mut pool = HashPool::new(&screen_13.device);
 
     let mut frame_count = 0;
@@ -131,25 +131,24 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         buf
     };
 
-    let blas_geometry_info = AccelerationStructureGeometryInfo {
-        ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-        geometries: vec![AccelerationStructureGeometry {
+    let blas_geometry_info = AccelerationStructureGeometryInfo::blas([(
+        AccelerationStructureGeometry {
             max_primitive_count: 1,
             flags: vk::GeometryFlagsKHR::OPAQUE,
             geometry: AccelerationStructureGeometryData::Triangles {
-                index_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&index_buf)),
+                index_addr: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&index_buf)),
                 index_type: vk::IndexType::UINT16,
                 max_vertex: 3,
-                transform_data: None,
-                vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
+                transform_addr: None,
+                vertex_addr: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
                     &vertex_buf,
                 )),
                 vertex_format: vk::Format::R32G32B32_SFLOAT,
                 vertex_stride: 12,
             },
-        }],
-    };
+        },
+        vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(1),
+    )]);
     let blas_size = AccelerationStructure::size_of(frame.device, &blas_geometry_info);
     let blas_info = AccelerationStructureInfo::blas(blas_size.create_size);
 
@@ -218,18 +217,17 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     }
 
     // Lease and bind a single top-level acceleration structure
-    let tlas_geometry_info = AccelerationStructureGeometryInfo {
-        ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-        geometries: vec![AccelerationStructureGeometry {
+    let tlas_geometry_info = AccelerationStructureGeometryInfo::tlas([(
+        AccelerationStructureGeometry {
             max_primitive_count: 1,
             flags: vk::GeometryFlagsKHR::OPAQUE,
             geometry: AccelerationStructureGeometryData::Instances {
                 array_of_pointers: false,
-                data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&instance_buf)),
+                addr: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&instance_buf)),
             },
-        }],
-    };
+        },
+        vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(1),
+    )]);
     let instance_buf = frame.render_graph.bind_node(instance_buf);
     let tlas_size = AccelerationStructure::size_of(frame.device, &tlas_geometry_info);
     let tlas = pool
@@ -270,19 +268,10 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         .map(|(_, blas_node)| *blas_node)
         .collect::<Vec<_>>();
 
-    let mut pass = pass.record_acceleration(move |accel, _| {
+    let mut pass = pass.record_acceleration(move |accel, bindings| {
         for (scratch_buf, blas_node) in blas_nodes {
-            accel.build_structure(
-                blas_node,
-                scratch_buf,
-                &blas_geometry_info,
-                &[vk::AccelerationStructureBuildRangeInfoKHR {
-                    first_vertex: 0,
-                    primitive_count: 1,
-                    primitive_offset: 0,
-                    transform_offset: 0,
-                }],
-            );
+            let scratch_data = Buffer::device_address(&bindings[scratch_buf]);
+            accel.build_structure(&blas_geometry_info, blas_node, scratch_data);
         }
     });
 
@@ -297,18 +286,9 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     );
     pass.access_node_mut(tlas_node, AccessType::AccelerationStructureBuildWrite);
 
-    pass.record_acceleration(move |accel, _| {
-        accel.build_structure(
-            tlas_node,
-            tlas_scratch_buf,
-            &tlas_geometry_info,
-            &[vk::AccelerationStructureBuildRangeInfoKHR {
-                first_vertex: 0,
-                primitive_count: 1,
-                primitive_offset: 0,
-                transform_offset: 0,
-            }],
-        );
+    pass.record_acceleration(move |accel, bindings| {
+        let scratch_data = Buffer::device_address(&bindings[tlas_scratch_buf]);
+        accel.build_structure(&tlas_geometry_info, tlas_node, scratch_data);
     });
 }
 
@@ -1096,4 +1076,3 @@ fn graphic_vert_frag_pipeline(
         )
     })
 }
-*/
