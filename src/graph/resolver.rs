@@ -10,8 +10,9 @@ use {
             buffer::Buffer,
             format_aspect_mask,
             graphic::DepthStencilMode,
-            image::{Image, ImageViewInfo},
-            image_access_layout, is_read_access, is_write_access, pipeline_stage_access_flags,
+            image::{Image, ImageAccess, ImageViewInfo},
+            image_access_layout, initial_image_layout_access, is_read_access, is_write_access,
+            pipeline_stage_access_flags,
             swapchain::SwapchainImage,
             AttachmentInfo, AttachmentRef, CommandBuffer, CommandBufferInfo, Descriptor,
             DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet, DriverError,
@@ -33,6 +34,9 @@ use {
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
+
+#[cfg(not(debug_assertions))]
+use std::hint::unreachable_unchecked;
 
 #[derive(Default)]
 struct AccessCache {
@@ -133,6 +137,24 @@ impl AccessCache {
     }
 }
 
+struct ImageSubresourceRangeDebug(vk::ImageSubresourceRange);
+
+impl std::fmt::Debug for ImageSubresourceRangeDebug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.aspect_mask.fmt(f)?;
+
+        f.write_str(" array: ")?;
+
+        let array_layers = self.0.base_array_layer..self.0.base_array_layer + self.0.layer_count;
+        array_layers.fmt(f)?;
+
+        f.write_str(" mip: ")?;
+
+        let mip_levels = self.0.base_mip_level..self.0.base_mip_level + self.0.level_count;
+        mip_levels.fmt(f)
+    }
+}
+
 #[derive(Debug)]
 struct PhysicalPass {
     descriptor_pool: Option<Lease<DescriptorPool>>,
@@ -214,24 +236,11 @@ impl Resolver {
         }
 
         let rhs_exec = rhs.execs.first().unwrap();
-        let rhs_depth_stencil = rhs_exec
-            .depth_stencil_attachment
-            .or(rhs_exec.depth_stencil_load)
-            .or(rhs_exec.depth_stencil_store)
-            .or_else(|| {
-                rhs_exec
-                    .depth_stencil_resolve
-                    .map(|(attachment, ..)| attachment)
-            })
-            .or_else(|| {
-                rhs_exec
-                    .depth_stencil_clear
-                    .map(|(attachment, _)| attachment)
-            });
 
         // Now we need to know what the subpasses (we may have prior merges) wrote
         for lhs_exec in lhs.execs.iter().rev() {
             let mut common_color_attachment = false;
+            let mut common_depth_attachment = false;
 
             // Multiview subpasses cannot be combined with non-multiview subpasses
             if (lhs_exec.view_mask == 0 && rhs_exec.view_mask != 0)
@@ -242,81 +251,101 @@ impl Resolver {
                 return false;
             }
 
-            // Compare individual color attachments for compatibility
-            for (attachment_idx, lhs_attachment) in lhs_exec
-                .color_attachments
-                .iter()
-                .chain(lhs_exec.color_loads.iter())
-                .chain(lhs_exec.color_stores.iter())
-                .chain(
-                    lhs_exec
-                        .color_clears
-                        .iter()
-                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
-                )
-                .chain(
-                    lhs_exec
-                        .color_resolves
-                        .iter()
-                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
-                )
-            {
-                let rhs_attachment = rhs_exec
+            // Check attachment compatibility both ways since one may have a different quantity than the other
+            for (a_exec, b_exec) in [(lhs_exec, rhs_exec), (rhs_exec, lhs_exec)] {
+                // Compare individual color attachments for compatibility
+                for (attachment_idx, a_attachment) in a_exec
                     .color_attachments
-                    .get(attachment_idx)
-                    .or_else(|| rhs_exec.color_loads.get(attachment_idx))
-                    .or_else(|| rhs_exec.color_stores.get(attachment_idx))
-                    .or_else(|| {
-                        rhs_exec
+                    .iter()
+                    .chain(a_exec.color_loads.iter())
+                    .chain(a_exec.color_stores.iter())
+                    .chain(
+                        a_exec
                             .color_clears
-                            .get(attachment_idx)
-                            .map(|(attachment, _)| attachment)
-                    })
-                    .or_else(|| {
-                        rhs_exec
+                            .iter()
+                            .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                    )
+                    .chain(
+                        a_exec
                             .color_resolves
-                            .get(attachment_idx)
-                            .map(|(attachment, _)| attachment)
-                    });
+                            .iter()
+                            .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                    )
+                {
+                    let b_attachment = b_exec
+                        .color_attachments
+                        .get(attachment_idx)
+                        .or_else(|| b_exec.color_loads.get(attachment_idx))
+                        .or_else(|| b_exec.color_stores.get(attachment_idx))
+                        .or_else(|| {
+                            b_exec
+                                .color_clears
+                                .get(attachment_idx)
+                                .map(|(attachment, _)| attachment)
+                        })
+                        .or_else(|| {
+                            b_exec
+                                .color_resolves
+                                .get(attachment_idx)
+                                .map(|(attachment, _)| attachment)
+                        });
 
-                if !Attachment::are_compatible(Some(*lhs_attachment), rhs_attachment.copied()) {
-                    trace!("  incompatible color attachments");
+                    if b_attachment.is_none() {
+                        trace!("  incompatible color attachments");
+
+                        return false;
+                    }
+
+                    if !Attachment::are_compatible(Some(*a_attachment), b_attachment.copied()) {
+                        trace!("  incompatible color attachments");
+
+                        return false;
+                    } else {
+                        common_color_attachment = true;
+                    }
+                }
+
+                // Compare depth/stencil attachments for compatibility
+                let a_depth_stencil = a_exec
+                    .depth_stencil_attachment
+                    .or(a_exec.depth_stencil_load)
+                    .or(a_exec.depth_stencil_store)
+                    .or_else(|| {
+                        a_exec
+                            .depth_stencil_resolve
+                            .map(|(attachment, ..)| attachment)
+                    })
+                    .or_else(|| a_exec.depth_stencil_clear.map(|(attachment, _)| attachment));
+
+                let b_depth_stencil = b_exec
+                    .depth_stencil_attachment
+                    .or(b_exec.depth_stencil_load)
+                    .or(b_exec.depth_stencil_store)
+                    .or_else(|| {
+                        b_exec
+                            .depth_stencil_resolve
+                            .map(|(attachment, ..)| attachment)
+                    })
+                    .or_else(|| b_exec.depth_stencil_clear.map(|(attachment, _)| attachment));
+
+                if !Attachment::are_compatible(a_depth_stencil, b_depth_stencil) {
+                    trace!("  incompatible depth/stencil attachments");
 
                     return false;
+                }
+
+                if a_depth_stencil.is_some() && b_depth_stencil.is_some() {
+                    common_depth_attachment = true;
                 } else {
-                    common_color_attachment = true;
+                    return false;
                 }
             }
 
-            // Compare depth/stencil attachments for compatibility
-            let lhs_depth_stencil = lhs_exec
-                .depth_stencil_attachment
-                .or(lhs_exec.depth_stencil_load)
-                .or(lhs_exec.depth_stencil_store)
-                .or_else(|| {
-                    lhs_exec
-                        .depth_stencil_resolve
-                        .map(|(attachment, ..)| attachment)
-                })
-                .or_else(|| {
-                    lhs_exec
-                        .depth_stencil_clear
-                        .map(|(attachment, _)| attachment)
-                });
-            if !Attachment::are_compatible(lhs_depth_stencil, rhs_depth_stencil) {
-                trace!("  incompatible depth/stencil attachments");
-
-                return false;
-            }
-
-            let common_depth_attachment =
-                lhs_depth_stencil.is_some() && rhs_depth_stencil.is_some();
-
             // Keep color and depth on tile.
-            if common_color_attachment || common_depth_attachment {
+            if common_color_attachment && common_depth_attachment {
                 trace!("  merging due to common image");
 
-                return true;
+                return true; // TODO is this returning true prematurely?
             }
         }
 
@@ -742,7 +771,7 @@ impl Resolver {
         pass: &Pass,
     ) -> Result<Option<Lease<DescriptorPool>>, DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool>,
     {
         let max_set_idx = pass
             .execs
@@ -844,7 +873,7 @@ impl Resolver {
         pass_idx: usize,
     ) -> Result<Lease<RenderPass>, DriverError>
     where
-        P: Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<RenderPassInfo, RenderPass>,
     {
         let pass = &self.graph.passes[pass_idx];
         let (mut color_attachment_count, mut depth_stencil_attachment_count) = (0, 0);
@@ -1653,7 +1682,7 @@ impl Resolver {
         schedule: &[usize],
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         for pass_idx in schedule.iter().copied() {
             // At the time this function runs the pass will already have been optimized into a
@@ -1862,30 +1891,21 @@ impl Resolver {
 
     #[profiling::function]
     fn record_execution_barriers<'a>(
-        trace_pad: &'static str,
         cmd_buf: &CommandBuffer,
         bindings: &mut [Binding],
-        accesses: impl IntoIterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
+        accesses: impl Iterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
     ) {
         use std::slice::from_ref;
 
         // We store a Barriers in TLS to save an alloc; contents are POD
         thread_local! {
-            static BARRIERS: RefCell<Barriers> = Default::default();
+            static TLS: RefCell<Tls> = Default::default();
         }
 
         struct Barrier<T> {
             next_access: AccessType,
             prev_access: AccessType,
             resource: T,
-        }
-
-        #[derive(Default)]
-        struct Barriers {
-            buffers: Vec<Barrier<BufferResource>>,
-            images: Vec<Barrier<ImageResource>>,
-            next_accesses: Vec<AccessType>,
-            prev_accesses: Vec<AccessType>,
         }
 
         struct BufferResource {
@@ -1899,12 +1919,20 @@ impl Resolver {
             range: vk::ImageSubresourceRange,
         }
 
-        BARRIERS.with_borrow_mut(|barriers| {
+        #[derive(Default)]
+        struct Tls {
+            buffers: Vec<Barrier<BufferResource>>,
+            images: Vec<Barrier<ImageResource>>,
+            next_accesses: Vec<AccessType>,
+            prev_accesses: Vec<AccessType>,
+        }
+
+        TLS.with_borrow_mut(|tls| {
             // Initialize TLS from a previous call
-            barriers.buffers.clear();
-            barriers.images.clear();
-            barriers.next_accesses.clear();
-            barriers.prev_accesses.clear();
+            tls.buffers.clear();
+            tls.images.clear();
+            tls.next_accesses.clear();
+            tls.prev_accesses.clear();
 
             // Map remaining accesses into vk_sync barriers (some accesses may have been removed by the
             // render pass leasing function)
@@ -1915,22 +1943,38 @@ impl Resolver {
                 match binding {
                     Binding::AccelerationStructure(..)
                     | Binding::AccelerationStructureLease(..) => {
-                        let accel_struct = binding.as_driver_acceleration_structure().unwrap();
+                        let Some(accel_struct) = binding.as_driver_acceleration_structure() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
 
                         let prev_access = AccelerationStructure::access(
                             accel_struct,
                             accesses.last().unwrap().access,
                         );
 
-                        barriers.next_accesses.extend(
+                        tls.next_accesses.extend(
                             accesses
                                 .iter()
                                 .map(|&SubresourceAccess { access, .. }| access),
                         );
-                        barriers.prev_accesses.push(prev_access);
+                        tls.prev_accesses.push(prev_access);
                     }
                     Binding::Buffer(..) | Binding::BufferLease(..) => {
-                        let buffer = binding.as_driver_buffer().unwrap();
+                        let Some(buffer) = binding.as_driver_buffer() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
 
                         for &SubresourceAccess {
                             access,
@@ -1942,7 +1986,7 @@ impl Resolver {
                             };
 
                             for (prev_access, range) in Buffer::access(buffer, access, range) {
-                                barriers.buffers.push(Barrier {
+                                tls.buffers.push(Barrier {
                                     next_access: access,
                                     prev_access,
                                     resource: BufferResource {
@@ -1955,7 +1999,15 @@ impl Resolver {
                         }
                     }
                     Binding::Image(..) | Binding::ImageLease(..) | Binding::SwapchainImage(..) => {
-                        let image = binding.as_driver_image().unwrap();
+                        let Some(image) = binding.as_driver_image() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
 
                         for &SubresourceAccess {
                             access,
@@ -1967,7 +2019,7 @@ impl Resolver {
                             };
 
                             for (prev_access, range) in Image::access(image, access, range) {
-                                barriers.images.push(Barrier {
+                                tls.images.push(Barrier {
                                     next_access: access,
                                     prev_access,
                                     resource: ImageResource {
@@ -1981,22 +2033,22 @@ impl Resolver {
                 }
             }
 
-            let global_barrier = if !barriers.next_accesses.is_empty() {
+            let global_barrier = if !tls.next_accesses.is_empty() {
                 // No resource attached - we use a global barrier for these
                 trace!(
-                    "{trace_pad}global {:?}->{:?}",
-                    barriers.next_accesses,
-                    barriers.prev_accesses
+                    "    global {:?}->{:?}",
+                    tls.next_accesses,
+                    tls.prev_accesses
                 );
 
                 Some(GlobalBarrier {
-                    next_accesses: barriers.next_accesses.as_slice(),
-                    previous_accesses: barriers.prev_accesses.as_slice(),
+                    next_accesses: tls.next_accesses.as_slice(),
+                    previous_accesses: tls.prev_accesses.as_slice(),
                 })
             } else {
                 None
             };
-            let buffer_barriers = barriers.buffers.iter().map(
+            let buffer_barriers = tls.buffers.iter().map(
                 |Barrier {
                      next_access,
                      prev_access,
@@ -2009,7 +2061,7 @@ impl Resolver {
                     } = *resource;
 
                     trace!(
-                        "{trace_pad}buffer {:?} {:?} {:?}->{:?}",
+                        "    buffer {:?} {:?} {:?}->{:?}",
                         buffer,
                         offset..offset + size,
                         prev_access,
@@ -2027,7 +2079,7 @@ impl Resolver {
                     }
                 },
             );
-            let image_barriers = barriers.images.iter().map(
+            let image_barriers = tls.images.iter().map(
                 |Barrier {
                      next_access,
                      prev_access,
@@ -2056,7 +2108,7 @@ impl Resolver {
                     }
 
                     trace!(
-                        "{trace_pad}image {:?} {:?} {:?}->{:?}",
+                        "    image {:?} {:?} {:?}->{:?}",
                         image,
                         ImageSubresourceRangeDebug(range),
                         prev_access,
@@ -2084,6 +2136,189 @@ impl Resolver {
                 global_barrier,
                 &buffer_barriers.collect::<Box<[_]>>(),
                 &image_barriers.collect::<Box<[_]>>(),
+            );
+        });
+    }
+
+    #[profiling::function]
+    fn record_image_layout_transitions(
+        cmd_buf: &CommandBuffer,
+        bindings: &mut [Binding],
+        pass: &mut Pass,
+    ) {
+        use std::slice::from_ref;
+
+        // We store a Barriers in TLS to save an alloc; contents are POD
+        thread_local! {
+            static TLS: RefCell<Tls> = Default::default();
+        }
+
+        struct ImageResourceBarrier {
+            image: vk::Image,
+            next_access: AccessType,
+            prev_access: AccessType,
+            range: vk::ImageSubresourceRange,
+        }
+
+        #[derive(Default)]
+        struct Tls {
+            images: Vec<ImageResourceBarrier>,
+            initial_layouts: HashMap<usize, ImageAccess<bool>>,
+        }
+
+        TLS.with_borrow_mut(|tls| {
+            tls.images.clear();
+            tls.initial_layouts.clear();
+
+            for (node_idx, accesses) in pass
+                .execs
+                .iter_mut()
+                .flat_map(|exec| exec.accesses.iter())
+                .map(|(node_idx, accesses)| (*node_idx, accesses))
+            {
+                debug_assert!(bindings.get(node_idx).is_some());
+
+                let binding = unsafe {
+                    // PassRef enforces this using assert_bound_graph_node
+                    bindings.get_unchecked(node_idx)
+                };
+
+                match binding {
+                    Binding::AccelerationStructure(..)
+                    | Binding::AccelerationStructureLease(..) => {
+                        let Some(accel_struct) = binding.as_driver_acceleration_structure() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
+
+                        AccelerationStructure::access(accel_struct, AccessType::Nothing);
+                    }
+                    Binding::Buffer(..) | Binding::BufferLease(..) => {
+                        let Some(buffer) = binding.as_driver_buffer() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
+
+                        for subresource_access in accesses {
+                            let &SubresourceAccess {
+                                subresource: Subresource::Buffer(access_range),
+                                ..
+                            } = subresource_access
+                            else {
+                                #[cfg(debug_assertions)]
+                                unreachable!();
+
+                                #[cfg(not(debug_assertions))]
+                                unsafe {
+                                    // This cannot be reached because PassRef enforces the subrange is
+                                    // of type N::Subresource where N is the image node type
+                                    unreachable_unchecked()
+                                }
+                            };
+
+                            for _ in Buffer::access(buffer, AccessType::Nothing, access_range) {}
+                        }
+                    }
+                    Binding::Image(..) | Binding::ImageLease(..) | Binding::SwapchainImage(..) => {
+                        let Some(image) = binding.as_driver_image() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
+
+                        let initial_layout = tls
+                            .initial_layouts
+                            .entry(node_idx)
+                            .or_insert_with(|| ImageAccess::new(image.info, true));
+
+                        for subresource_access in accesses {
+                            let &SubresourceAccess {
+                                access,
+                                subresource: Subresource::Image(access_range),
+                            } = subresource_access
+                            else {
+                                #[cfg(debug_assertions)]
+                                unreachable!();
+
+                                #[cfg(not(debug_assertions))]
+                                unsafe {
+                                    // This cannot be reached because PassRef enforces the subrange is
+                                    // of type N::Subresource where N is the image node type
+                                    unreachable_unchecked()
+                                }
+                            };
+
+                            for layout_range in
+                                initial_layout.access(false, access_range).filter_map(
+                                    |(initial, access_range)| initial.then_some(access_range),
+                                )
+                            {
+                                for (prev_access, range) in
+                                    Image::access(image, AccessType::Nothing, layout_range)
+                                {
+                                    tls.images.push(ImageResourceBarrier {
+                                        image: **image,
+                                        next_access: initial_image_layout_access(access),
+                                        prev_access,
+                                        range,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let image_barriers = tls.images.iter().map(
+                |ImageResourceBarrier {
+                     image,
+                     next_access,
+                     prev_access,
+                     range,
+                 }| {
+                    trace!(
+                        "    image {:?} {:?} {:?}->{:?}",
+                        image,
+                        ImageSubresourceRangeDebug(*range),
+                        prev_access,
+                        next_access,
+                    );
+
+                    ImageBarrier {
+                        next_accesses: from_ref(next_access),
+                        next_layout: image_access_layout(*next_access),
+                        previous_accesses: from_ref(prev_access),
+                        previous_layout: image_access_layout(*prev_access),
+                        discard_contents: *prev_access == AccessType::Nothing
+                            || is_write_access(*next_access),
+                        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        image: *image,
+                        range: *range,
+                    }
+                },
+            );
+
+            pipeline_barrier(
+                &cmd_buf.device,
+                **cmd_buf,
+                None,
+                &[],
+                &image_barriers.collect::<Box<_>>(),
             );
         });
     }
@@ -2125,7 +2360,7 @@ impl Resolver {
         node: impl Node,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         let node_idx = node.index();
 
@@ -2148,7 +2383,7 @@ impl Resolver {
         end_pass_idx: usize,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         thread_local! {
             static SCHEDULE: RefCell<Schedule> = Default::default();
@@ -2172,7 +2407,7 @@ impl Resolver {
         end_pass_idx: usize,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         if schedule.passes.is_empty() {
             return Ok(());
@@ -2208,14 +2443,9 @@ impl Resolver {
                 Self::write_descriptor_sets(cmd_buf, &self.graph.bindings, pass, physical_pass)?;
             }
 
-            Self::record_execution_barriers(
-                "  ",
-                cmd_buf,
-                &mut self.graph.bindings,
-                &pass.execs[0].accesses,
-            );
-
             let render_area = if is_graphic {
+                Self::record_image_layout_transitions(cmd_buf, &mut self.graph.bindings, pass);
+
                 let render_area = Self::render_area(&self.graph.bindings, pass);
 
                 Self::begin_render_pass(
@@ -2283,12 +2513,11 @@ impl Resolver {
                     Self::bind_descriptor_sets(cmd_buf, pipeline, physical_pass, exec_idx);
                 }
 
-                if exec_idx > 0 && !is_graphic {
+                if !is_graphic {
                     Self::record_execution_barriers(
-                        "    ",
                         cmd_buf,
                         &mut self.graph.bindings,
-                        &exec.accesses,
+                        exec.accesses.iter(),
                     );
                 }
 
@@ -2360,7 +2589,7 @@ impl Resolver {
         cmd_buf: &mut CommandBuffer,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         if self.graph.passes.is_empty() {
             return Ok(());
@@ -2397,6 +2626,13 @@ impl Resolver {
             .map(|(attachment, _)| attachment)
             .chain(first_exec.color_loads.values().copied())
             .chain(first_exec.color_stores.values().copied())
+            .chain(
+                first_exec
+                    .depth_stencil_clear
+                    .map(|(attachment, _)| attachment),
+            )
+            .chain(first_exec.depth_stencil_load)
+            .chain(first_exec.depth_stencil_store)
             .map(|attachment| {
                 let info = bindings[attachment.target].as_driver_image().unwrap().info;
 

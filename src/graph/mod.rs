@@ -64,7 +64,7 @@ struct Area {
     y: i32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 struct Attachment {
     array_layer_count: u32,
     aspect_mask: vk::ImageAspectFlags,
