@@ -7,6 +7,7 @@ use {
         fmt::{Debug, Formatter},
         ops::Deref,
         os::raw::c_char,
+        process::abort,
         thread::panicking,
     },
 };
@@ -36,6 +37,10 @@ unsafe extern "system" fn vulkan_debug_callback(
     message: *const c_char,
     _user_data: *mut c_void,
 ) -> u32 {
+    if panicking() {
+        return vk::FALSE;
+    }
+
     let message = CStr::from_ptr(message).to_str().unwrap();
 
     if message.starts_with("Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ]")
@@ -68,7 +73,11 @@ unsafe extern "system" fn vulkan_debug_callback(
                 .map(|rust_log| rust_log.is_empty())
                 .unwrap_or(true)
         {
-            panic!("run with `RUST_LOG=trace` environment variable to display more information - see https://github.com/rust-lang/log#in-executables");
+            eprintln!(
+                "note: run with `RUST_LOG=trace` environment variable to display more information"
+            );
+            eprintln!("note: see https://github.com/rust-lang/log#in-executables");
+            abort()
         }
 
         if current().name() != Some("main") {
