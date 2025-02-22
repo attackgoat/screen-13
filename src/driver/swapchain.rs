@@ -411,7 +411,7 @@ impl Swapchain {
         let mut res = vk::ImageUsageFlags::empty();
 
         for bit in 0..u32::BITS {
-            let usage = vk::ImageUsageFlags::from_raw(1 << bit & surface_capabilities.as_raw());
+            let usage = vk::ImageUsageFlags::from_raw((1 << bit) & surface_capabilities.as_raw());
             if usage.is_empty() {
                 continue;
             }

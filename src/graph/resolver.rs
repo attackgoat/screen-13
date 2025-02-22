@@ -194,8 +194,7 @@ impl Resolver {
         fn first_graphic_pipeline(pass: &Pass) -> Option<&GraphicPipeline> {
             pass.execs
                 .first()
-                .map(|exec| exec.pipeline.as_ref().map(ExecutionPipeline::as_graphic))
-                .flatten()
+                .and_then(|exec| exec.pipeline.as_ref().map(ExecutionPipeline::as_graphic))
                 .flatten()
         }
 
