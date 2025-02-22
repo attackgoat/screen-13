@@ -41,8 +41,10 @@ static OPERATIONS: &[Operation] = &[
     record_graphic_load_store,
     record_graphic_msaa_depth_stencil,
     record_graphic_will_merge_subpass_input,
-    record_graphic_will_merge_common_color,
+    record_graphic_will_merge_common_color1,
+    record_graphic_will_merge_common_color2,
     record_graphic_will_merge_common_depth1,
+    record_graphic_will_merge_common_depth2,
     record_graphic_wont_merge,
     record_accel_struct_builds,
     record_transfer_graphic_multipass,
@@ -803,34 +805,7 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
         });
 }
 
-fn record_graphic_will_merge_common_color(frame: &mut FrameContext, pool: &mut HashPool) {
-    let pipeline = graphic_vert_frag_pipeline(
-        frame.device,
-        GraphicPipelineInfo::default(),
-        inline_spirv!(
-            r#"
-            #version 460 core
-
-            void main() {
-            }
-            "#,
-            vert
-        )
-        .as_slice(),
-        inline_spirv!(
-            r#"
-            #version 460 core
-
-            layout(location = 0) out vec4 color_out;
-
-            void main() {
-                color_out = vec4(0);
-            }
-            "#,
-            frag
-        )
-        .as_slice(),
-    );
+fn record_graphic_will_merge_common_color1(frame: &mut FrameContext, pool: &mut HashPool) {
     let image = frame.render_graph.bind_node(
         pool.lease(ImageInfo::image_2d(
             256,
@@ -845,7 +820,29 @@ fn record_graphic_will_merge_common_color(frame: &mut FrameContext, pool: &mut H
     frame
         .render_graph
         .begin_pass("a")
-        .bind_pipeline(&pipeline)
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color0;
+                void main() {
+                    color0 = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
         .store_color(0, image)
         .record_subpass(|subpass, _| {
             subpass.draw(1, 1, 0, 0);
@@ -853,7 +850,29 @@ fn record_graphic_will_merge_common_color(frame: &mut FrameContext, pool: &mut H
     frame
         .render_graph
         .begin_pass("b")
-        .bind_pipeline(&pipeline)
+        .bind_pipeline(&graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color0;
+                void main() {
+                    color0 = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
         .load_color(0, image)
         .store_color(0, image)
         .record_subpass(|subpass, _| {
@@ -861,34 +880,124 @@ fn record_graphic_will_merge_common_color(frame: &mut FrameContext, pool: &mut H
         });
 }
 
-fn record_graphic_will_merge_common_depth1(frame: &mut FrameContext, pool: &mut HashPool) {
-    let pipeline = graphic_vert_frag_pipeline(
-        frame.device,
-        GraphicPipelineInfo::default(),
-        inline_spirv!(
-            r#"
-            #version 460 core
-
-            void main() {
-            }
-            "#,
-            vert
-        )
-        .as_slice(),
-        inline_spirv!(
-            r#"
-            #version 460 core
-
-            layout(location = 0) out vec4 color_out;
-
-            void main() {
-                color_out = vec4(0);
-            }
-            "#,
-            frag
-        )
-        .as_slice(),
+fn record_graphic_will_merge_common_color2(frame: &mut FrameContext, pool: &mut HashPool) {
+    let image_0 = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
     );
+    let image_1 = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color0;
+                void main() {
+                    color0 = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_color(0, image_0)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(&graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color0;
+                layout(location = 1) out vec4 color1;
+                void main() {
+                    color0 = vec4(0);
+                    color1 = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .load_color(0, image_0)
+        .store_color(0, image_0)
+        .store_color(1, image_1)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("c")
+        .bind_pipeline(&graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+            #version 460 core
+            void main() { }
+            "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+            #version 460 core
+            layout(location = 0) out vec4 color0;
+            void main() {
+                color0 = vec4(0);
+            }
+            "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .clear_color(0, image_0)
+        .store_color(0, image_0)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_common_depth1(frame: &mut FrameContext, pool: &mut HashPool) {
     let color_image = frame.render_graph.bind_node(
         pool.lease(ImageInfo::image_2d(
             256,
@@ -912,7 +1021,29 @@ fn record_graphic_will_merge_common_depth1(frame: &mut FrameContext, pool: &mut 
     frame
         .render_graph
         .begin_pass("a")
-        .bind_pipeline(&pipeline)
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color_out;
+                void main() {
+                    color_out = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
         .store_color(0, color_image)
         .store_depth_stencil(depth_image)
         .record_subpass(|subpass, _| {
@@ -921,7 +1052,112 @@ fn record_graphic_will_merge_common_depth1(frame: &mut FrameContext, pool: &mut 
     frame
         .render_graph
         .begin_pass("b")
-        .bind_pipeline(&pipeline)
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() {
+                    gl_FragDepth = 0.0;
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .load_depth_stencil(depth_image)
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_common_depth2(frame: &mut FrameContext, pool: &mut HashPool) {
+    let color_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+    let depth_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::D32_SFLOAT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    // Pass "a" stores color0+depth which "b" compatibly loads; so these two will get merged
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() {
+                    gl_FragDepth = 0.0;
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color_out;
+                void main() {
+                    color_out = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_color(0, color_image)
         .load_depth_stencil(depth_image)
         .store_depth_stencil(depth_image)
         .record_subpass(|subpass, _| {

@@ -239,6 +239,7 @@ impl Resolver {
         let rhs = unsafe { rhs.unwrap_unchecked() };
 
         let mut common_color_attachment = false;
+        let mut common_depth_attachment = false;
 
         // Now we need to know what the subpasses (we may have prior merges) wrote
         for lhs in lhs.execs.iter().rev() {
@@ -311,10 +312,12 @@ impl Resolver {
 
                 return false;
             }
+
+            common_depth_attachment |= lhs_depth_stencil.is_some() && rhs_depth_stencil.is_some();
         }
 
         // Keep color and depth on tile.
-        if common_color_attachment {
+        if common_color_attachment || common_depth_attachment {
             trace!("  merging due to common image");
 
             return true;
@@ -1455,7 +1458,7 @@ impl Resolver {
                                 );
 
                                 // Wait for ...
-                                dep.src_stage_mask |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+                                dep.src_stage_mask |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
                                 dep.src_access_mask |=
                                     vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
 
@@ -1688,15 +1691,19 @@ impl Resolver {
                 dependencies.into_values().collect::<Vec<_>>()
             };
 
-        let info = RenderPassInfo {
+        // let info = RenderPassInfo {
+        //     attachments,
+        //     dependencies,
+        //     subpasses,
+        // };
+
+        // trace!("{:#?}", info);
+
+        pool.lease(RenderPassInfo {
             attachments,
             dependencies,
             subpasses,
-        };
-
-        trace!("{:#?}", info);
-
-        pool.lease(info)
+        })
     }
 
     #[profiling::function]
