@@ -22,18 +22,16 @@ Also helpful to run with valgrind:
 
 */
 use {
+    clap::Parser,
     inline_spirv::inline_spirv,
     log::debug,
-    rand::{rng, seq::IndexedRandom},
+    rand::{rng, seq::IndexedRandom, Rng},
     screen_13::prelude::*,
     screen_13_window::{FrameContext, WindowBuilder, WindowError},
     std::{mem::size_of, sync::Arc},
 };
 
 type Operation = fn(&mut FrameContext, &mut HashPool);
-
-const FRAME_COUNT: usize = 100;
-const OPERATIONS_PER_FRAME: usize = 16;
 
 static OPERATIONS: &[Operation] = &[
     record_compute_array_bind,
@@ -43,6 +41,8 @@ static OPERATIONS: &[Operation] = &[
     record_graphic_load_store,
     record_graphic_msaa_depth_stencil,
     record_graphic_will_merge_subpass_input,
+    record_graphic_will_merge_common_color,
+    record_graphic_will_merge_common_depth1,
     record_graphic_wont_merge,
     record_accel_struct_builds,
     record_transfer_graphic_multipass,
@@ -54,26 +54,36 @@ fn main() -> Result<(), WindowError> {
 
     let mut rng = rng();
 
-    // If ray tracing is unsupported then set that to false and remove the associated operations
     let screen_13 = WindowBuilder::default().debug(true).build()?;
     let mut pool = HashPool::new(&screen_13.device);
 
     let mut frame_count = 0;
 
+    let args = Args::parse();
+
     screen_13.run(|mut frame| {
-        // We stop fuzzing after 10 frames
-        frame_count += 1;
-        if frame_count == FRAME_COUNT {
+        if frame_count == args.frame_count {
             *frame.will_exit = true;
+            return;
         }
 
-        // We fuzz a set amount of randomly selected operations per frame
-        for _ in 0..OPERATIONS_PER_FRAME {
-            OPERATIONS.choose(&mut rng).unwrap()(&mut frame, &mut pool);
-        }
+        frame_count += 1;
 
         // We are not testing the swapchain - so always clear it
-        frame.render_graph.clear_color_image(frame.swapchain_image);
+        let clear_before: bool = rng.random();
+
+        if clear_before {
+            frame.render_graph.clear_color_image(frame.swapchain_image);
+        }
+
+        for _ in 0..args.ops_per_frame {
+            let op_fn = OPERATIONS.choose(&mut rng).unwrap();
+            op_fn(&mut frame, &mut pool);
+        }
+
+        if !clear_before {
+            frame.render_graph.clear_color_image(frame.swapchain_image);
+        }
     })?;
 
     debug!("OK");
@@ -793,6 +803,132 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
         });
 }
 
+fn record_graphic_will_merge_common_color(frame: &mut FrameContext, pool: &mut HashPool) {
+    let pipeline = graphic_vert_frag_pipeline(
+        frame.device,
+        GraphicPipelineInfo::default(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            void main() {
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            layout(location = 0) out vec4 color_out;
+
+            void main() {
+                color_out = vec4(0);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+    let image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    // Pass "a" stores color0 which "b" compatibly loads; so these two will get merged
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(&pipeline)
+        .store_color(0, image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(&pipeline)
+        .load_color(0, image)
+        .store_color(0, image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_common_depth1(frame: &mut FrameContext, pool: &mut HashPool) {
+    let pipeline = graphic_vert_frag_pipeline(
+        frame.device,
+        GraphicPipelineInfo::default(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            void main() {
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+        inline_spirv!(
+            r#"
+            #version 460 core
+
+            layout(location = 0) out vec4 color_out;
+
+            void main() {
+                color_out = vec4(0);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+    let color_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+    let depth_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::D32_SFLOAT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    // Pass "a" stores color0+depth which "b" compatibly loads; so these two will get merged
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(&pipeline)
+        .store_color(0, color_image)
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(&pipeline)
+        .load_depth_stencil(depth_image)
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
 fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, pool: &mut HashPool) {
     let vertex = inline_spirv!(
         r#"
@@ -853,7 +989,7 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, pool: &mut 
         .unwrap(),
     );
 
-    // Pass "a" stores color 0 which "b" compatibly inputs "image"; so these two will get merged
+    // Pass "a" stores color 0 which "b" compatibly inputs; so these two will get merged
     frame
         .render_graph
         .begin_pass("a")
@@ -1075,4 +1211,15 @@ fn graphic_vert_frag_pipeline(
                 }),
         )
     })
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Count of fuzzing frames
+    #[arg(long, default_value_t = 100)]
+    frame_count: usize,
+
+    /// Count of operations run per fuzzing frame
+    #[arg(long, default_value_t = 16)]
+    ops_per_frame: usize,
 }
