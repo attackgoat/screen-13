@@ -9,7 +9,7 @@ use {
             accel_struct::AccelerationStructure,
             buffer::Buffer,
             format_aspect_mask,
-            graphic::DepthStencilMode,
+            graphic::{DepthStencilMode, GraphicPipeline},
             image::{Image, ImageAccess, ImageViewInfo},
             image_access_layout, initial_image_layout_access, is_read_access, is_write_access,
             pipeline_stage_access_flags,
@@ -191,37 +191,34 @@ impl Resolver {
 
     #[profiling::function]
     fn allow_merge_passes(lhs: &Pass, rhs: &Pass) -> bool {
-        let lhs_pipeline = lhs
-            .execs
-            .first()
-            .map(|exec| exec.pipeline.as_ref())
-            .filter(|pipeline| matches!(pipeline, Some(ExecutionPipeline::Graphic(_))))
-            .flatten();
-        let rhs_pipeline = rhs
-            .execs
-            .first()
-            .map(|exec| exec.pipeline.as_ref())
-            .filter(|pipeline| matches!(pipeline, Some(ExecutionPipeline::Graphic(_))))
-            .flatten();
+        fn first_graphic_pipeline(pass: &Pass) -> Option<&GraphicPipeline> {
+            pass.execs
+                .first()
+                .map(|exec| exec.pipeline.as_ref().map(ExecutionPipeline::as_graphic))
+                .flatten()
+                .flatten()
+        }
 
-        // Both must have graphic pipelines
-        if lhs_pipeline.is_none() || rhs_pipeline.is_none() {
-            trace!(
-                "  {} is {}graphic",
-                lhs.name,
-                if lhs_pipeline.is_none() { "not " } else { "" }
-            );
-            trace!(
-                "  {} is {}graphic",
-                rhs.name,
-                if rhs_pipeline.is_none() { "not " } else { "" }
-            );
+        fn is_multiview(view_mask: u32) -> bool {
+            view_mask != 0
+        }
+
+        let lhs_pipeline = first_graphic_pipeline(lhs);
+        if lhs_pipeline.is_none() {
+            trace!("  {} is not graphic", lhs.name,);
 
             return false;
         }
 
-        let lhs_pipeline = lhs_pipeline.unwrap().unwrap_graphic();
-        let rhs_pipeline = rhs_pipeline.unwrap().unwrap_graphic();
+        let rhs_pipeline = first_graphic_pipeline(rhs);
+        if rhs_pipeline.is_none() {
+            trace!("  {} is not graphic", rhs.name,);
+
+            return false;
+        }
+
+        let lhs_pipeline = unsafe { lhs_pipeline.unwrap_unchecked() };
+        let rhs_pipeline = unsafe { rhs_pipeline.unwrap_unchecked() };
 
         // Must be same general rasterization modes
         if lhs_pipeline.info.blend != rhs_pipeline.info.blend
@@ -235,118 +232,93 @@ impl Resolver {
             return false;
         }
 
-        let rhs_exec = rhs.execs.first().unwrap();
+        let rhs = rhs.execs.first();
+
+        // PassRef makes sure this never happens
+        debug_assert!(rhs.is_some());
+
+        let rhs = unsafe { rhs.unwrap_unchecked() };
+
+        let mut common_color_attachment = false;
 
         // Now we need to know what the subpasses (we may have prior merges) wrote
-        for lhs_exec in lhs.execs.iter().rev() {
-            let mut common_color_attachment = false;
-            let mut common_depth_attachment = false;
-
+        for lhs in lhs.execs.iter().rev() {
             // Multiview subpasses cannot be combined with non-multiview subpasses
-            if (lhs_exec.view_mask == 0 && rhs_exec.view_mask != 0)
-                || (lhs_exec.view_mask != 0 && rhs_exec.view_mask == 0)
-            {
-                trace!("  incompatible multiview setting");
+            if is_multiview(lhs.view_mask) != is_multiview(rhs.view_mask) {
+                trace!("  incompatible multiview");
 
                 return false;
             }
 
-            // Check attachment compatibility both ways since one may have a different quantity than the other
-            for (a_exec, b_exec) in [(lhs_exec, rhs_exec), (rhs_exec, lhs_exec)] {
-                // Compare individual color attachments for compatibility
-                for (attachment_idx, a_attachment) in a_exec
+            // Compare individual color attachments for compatibility
+            for (attachment_idx, lhs_attachment) in lhs
+                .color_attachments
+                .iter()
+                .chain(lhs.color_loads.iter())
+                .chain(lhs.color_stores.iter())
+                .chain(
+                    lhs.color_clears
+                        .iter()
+                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                )
+                .chain(
+                    lhs.color_resolves
+                        .iter()
+                        .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
+                )
+            {
+                let rhs_attachment = rhs
                     .color_attachments
-                    .iter()
-                    .chain(a_exec.color_loads.iter())
-                    .chain(a_exec.color_stores.iter())
-                    .chain(
-                        a_exec
-                            .color_clears
-                            .iter()
-                            .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
-                    )
-                    .chain(
-                        a_exec
-                            .color_resolves
-                            .iter()
-                            .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
-                    )
-                {
-                    let b_attachment = b_exec
-                        .color_attachments
-                        .get(attachment_idx)
-                        .or_else(|| b_exec.color_loads.get(attachment_idx))
-                        .or_else(|| b_exec.color_stores.get(attachment_idx))
-                        .or_else(|| {
-                            b_exec
-                                .color_clears
-                                .get(attachment_idx)
-                                .map(|(attachment, _)| attachment)
-                        })
-                        .or_else(|| {
-                            b_exec
-                                .color_resolves
-                                .get(attachment_idx)
-                                .map(|(attachment, _)| attachment)
-                        });
-
-                    if b_attachment.is_none() {
-                        trace!("  incompatible color attachments");
-
-                        return false;
-                    }
-
-                    if !Attachment::are_compatible(Some(*a_attachment), b_attachment.copied()) {
-                        trace!("  incompatible color attachments");
-
-                        return false;
-                    } else {
-                        common_color_attachment = true;
-                    }
-                }
-
-                // Compare depth/stencil attachments for compatibility
-                let a_depth_stencil = a_exec
-                    .depth_stencil_attachment
-                    .or(a_exec.depth_stencil_load)
-                    .or(a_exec.depth_stencil_store)
+                    .get(attachment_idx)
+                    .or_else(|| rhs.color_loads.get(attachment_idx))
+                    .or_else(|| rhs.color_stores.get(attachment_idx))
                     .or_else(|| {
-                        a_exec
-                            .depth_stencil_resolve
-                            .map(|(attachment, ..)| attachment)
+                        rhs.color_clears
+                            .get(attachment_idx)
+                            .map(|(attachment, _)| attachment)
                     })
-                    .or_else(|| a_exec.depth_stencil_clear.map(|(attachment, _)| attachment));
-
-                let b_depth_stencil = b_exec
-                    .depth_stencil_attachment
-                    .or(b_exec.depth_stencil_load)
-                    .or(b_exec.depth_stencil_store)
                     .or_else(|| {
-                        b_exec
-                            .depth_stencil_resolve
-                            .map(|(attachment, ..)| attachment)
-                    })
-                    .or_else(|| b_exec.depth_stencil_clear.map(|(attachment, _)| attachment));
+                        rhs.color_resolves
+                            .get(attachment_idx)
+                            .map(|(attachment, _)| attachment)
+                    });
 
-                if !Attachment::are_compatible(a_depth_stencil, b_depth_stencil) {
-                    trace!("  incompatible depth/stencil attachments");
+                if !Attachment::are_compatible(Some(*lhs_attachment), rhs_attachment.copied()) {
+                    trace!("  incompatible color attachments");
 
                     return false;
                 }
 
-                if a_depth_stencil.is_some() && b_depth_stencil.is_some() {
-                    common_depth_attachment = true;
-                } else {
-                    return false;
-                }
+                common_color_attachment = true;
             }
 
-            // Keep color and depth on tile.
-            if common_color_attachment && common_depth_attachment {
-                trace!("  merging due to common image");
+            // Compare depth/stencil attachments for compatibility
+            let lhs_depth_stencil = lhs
+                .depth_stencil_attachment
+                .or(lhs.depth_stencil_load)
+                .or(lhs.depth_stencil_store)
+                .or_else(|| lhs.depth_stencil_resolve.map(|(attachment, ..)| attachment))
+                .or_else(|| lhs.depth_stencil_clear.map(|(attachment, _)| attachment));
 
-                return true; // TODO is this returning true prematurely?
+            let rhs_depth_stencil = rhs
+                .depth_stencil_attachment
+                .or(rhs.depth_stencil_load)
+                .or(rhs.depth_stencil_store)
+                .or_else(|| rhs.depth_stencil_resolve.map(|(attachment, ..)| attachment))
+                .or_else(|| rhs.depth_stencil_clear.map(|(attachment, _)| attachment));
+
+            if !Attachment::are_compatible(lhs_depth_stencil, rhs_depth_stencil) {
+                trace!("  incompatible depth/stencil attachments");
+
+                return false;
             }
+        }
+
+        // Keep color and depth on tile.
+        if common_color_attachment {
+            trace!("  merging due to common image");
+
+            return true;
         }
 
         // Keep input on tile
@@ -930,147 +902,192 @@ impl Resolver {
 
         let mut subpasses = Vec::<SubpassInfo>::with_capacity(pass.execs.len());
 
-        // Add load op attachments using the first execution
         {
-            let first_exec = &pass.execs[0];
+            let mut color_set = vec![false; attachment_count];
+            let mut depth_stencil_set = false;
 
-            // Cleared color attachments
-            for (attachment_idx, (cleared_attachment, _)) in &first_exec.color_clears {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = cleared_attachment.format;
-                attachment.sample_count = cleared_attachment.sample_count;
-                attachment.load_op = vk::AttachmentLoadOp::CLEAR;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-            }
+            // Add load op attachments using the first executions
+            for exec in &pass.execs {
+                // Cleared color attachments
+                for (attachment_idx, (cleared_attachment, _)) in &exec.color_clears {
+                    let color_set = &mut color_set[*attachment_idx as usize];
+                    if *color_set {
+                        continue;
+                    }
 
-            // Loaded color attachments
-            for (attachment_idx, loaded_attachment) in &first_exec.color_loads {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = loaded_attachment.format;
-                attachment.sample_count = loaded_attachment.sample_count;
-                attachment.load_op = vk::AttachmentLoadOp::LOAD;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-            }
-
-            // Cleared depth/stencil attachment
-            if let Some((cleared_attachment, _)) = first_exec.depth_stencil_clear {
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = cleared_attachment.format;
-                attachment.sample_count = cleared_attachment.sample_count;
-                attachment.initial_layout = if cleared_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
+                    let attachment = &mut attachments[*attachment_idx as usize];
+                    attachment.fmt = cleared_attachment.format;
+                    attachment.sample_count = cleared_attachment.sample_count;
                     attachment.load_op = vk::AttachmentLoadOp::CLEAR;
-                    attachment.stencil_load_op = vk::AttachmentLoadOp::CLEAR;
+                    attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                    *color_set = true;
+                }
 
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if cleared_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    attachment.load_op = vk::AttachmentLoadOp::CLEAR;
+                // Loaded color attachments
+                for (attachment_idx, loaded_attachment) in &exec.color_loads {
+                    let color_set = &mut color_set[*attachment_idx as usize];
+                    if *color_set {
+                        continue;
+                    }
 
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    attachment.stencil_load_op = vk::AttachmentLoadOp::CLEAR;
-
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-            } else if let Some(loaded_attachment) = first_exec.depth_stencil_load {
-                // Loaded depth/stencil attachment
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = loaded_attachment.format;
-                attachment.sample_count = loaded_attachment.sample_count;
-                attachment.initial_layout = if loaded_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
+                    let attachment = &mut attachments[*attachment_idx as usize];
+                    attachment.fmt = loaded_attachment.format;
+                    attachment.sample_count = loaded_attachment.sample_count;
                     attachment.load_op = vk::AttachmentLoadOp::LOAD;
-                    attachment.stencil_load_op = vk::AttachmentLoadOp::LOAD;
+                    attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                    *color_set = true;
+                }
 
-                    vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                } else if loaded_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    attachment.load_op = vk::AttachmentLoadOp::LOAD;
+                // Cleared depth/stencil attachment
+                if !depth_stencil_set {
+                    if let Some((cleared_attachment, _)) = exec.depth_stencil_clear {
+                        let attachment = &mut attachments[color_attachment_count];
+                        attachment.fmt = cleared_attachment.format;
+                        attachment.sample_count = cleared_attachment.sample_count;
+                        attachment.initial_layout = if cleared_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                        {
+                            attachment.load_op = vk::AttachmentLoadOp::CLEAR;
+                            attachment.stencil_load_op = vk::AttachmentLoadOp::CLEAR;
 
-                    vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-                } else {
-                    attachment.stencil_load_op = vk::AttachmentLoadOp::LOAD;
+                            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                        } else if cleared_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            attachment.load_op = vk::AttachmentLoadOp::CLEAR;
 
-                    vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
-                };
+                            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                        } else {
+                            attachment.stencil_load_op = vk::AttachmentLoadOp::CLEAR;
+
+                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                        };
+                        depth_stencil_set = true;
+                    } else if let Some(loaded_attachment) = exec.depth_stencil_load {
+                        // Loaded depth/stencil attachment
+                        let attachment = &mut attachments[color_attachment_count];
+                        attachment.fmt = loaded_attachment.format;
+                        attachment.sample_count = loaded_attachment.sample_count;
+                        attachment.initial_layout = if loaded_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                        {
+                            attachment.load_op = vk::AttachmentLoadOp::LOAD;
+                            attachment.stencil_load_op = vk::AttachmentLoadOp::LOAD;
+
+                            vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                        } else if loaded_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            attachment.load_op = vk::AttachmentLoadOp::LOAD;
+
+                            vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+                        } else {
+                            attachment.stencil_load_op = vk::AttachmentLoadOp::LOAD;
+
+                            vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
+                        };
+                        depth_stencil_set = true;
+                    } else if exec.depth_stencil_clear.is_some()
+                        || exec.depth_stencil_store.is_some()
+                    {
+                        depth_stencil_set = true;
+                    }
+                }
             }
         }
 
-        // Add store op attachments using the last execution
         {
-            let last_exec = pass.execs.last().unwrap();
+            let mut color_set = vec![false; attachment_count];
+            let mut depth_stencil_set = false;
+            let mut depth_stencil_resolve_set = false;
 
-            // Resolved color attachments
-            for (attachment_idx, (resolved_attachment, _)) in &last_exec.color_resolves {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-            }
+            // Add store op attachments using the last executions
+            for exec in pass.execs.iter().rev() {
+                // Resolved color attachments
+                for (attachment_idx, (resolved_attachment, _)) in &exec.color_resolves {
+                    let color_set = &mut color_set[*attachment_idx as usize];
+                    if *color_set {
+                        continue;
+                    }
 
-            // Stored color attachments
-            for (attachment_idx, stored_attachment) in &last_exec.color_stores {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.store_op = vk::AttachmentStoreOp::STORE;
-                attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-            }
+                    let attachment = &mut attachments[*attachment_idx as usize];
+                    attachment.fmt = resolved_attachment.format;
+                    attachment.sample_count = resolved_attachment.sample_count;
+                    attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                    *color_set = true;
+                }
 
-            // Stored depth/stencil attachment
-            if let Some(stored_attachment) = last_exec.depth_stencil_store {
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.final_layout = if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
+                // Stored color attachments
+                for (attachment_idx, stored_attachment) in &exec.color_stores {
+                    let color_set = &mut color_set[*attachment_idx as usize];
+                    if *color_set {
+                        continue;
+                    }
+
+                    let attachment = &mut attachments[*attachment_idx as usize];
+                    attachment.fmt = stored_attachment.format;
+                    attachment.sample_count = stored_attachment.sample_count;
                     attachment.store_op = vk::AttachmentStoreOp::STORE;
-                    attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
+                    attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                    *color_set = true;
+                }
 
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    attachment.store_op = vk::AttachmentStoreOp::STORE;
+                // Stored depth/stencil attachment
+                if !depth_stencil_set {
+                    if let Some(stored_attachment) = exec.depth_stencil_store {
+                        let attachment = &mut attachments[color_attachment_count];
+                        attachment.fmt = stored_attachment.format;
+                        attachment.sample_count = stored_attachment.sample_count;
+                        attachment.final_layout = if stored_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                        {
+                            attachment.store_op = vk::AttachmentStoreOp::STORE;
+                            attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
 
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
+                            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                        } else if stored_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            attachment.store_op = vk::AttachmentStoreOp::STORE;
 
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-            }
+                            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                        } else {
+                            attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
 
-            // Resolved depth/stencil attachment
-            if let Some((resolved_attachment, ..)) = last_exec.depth_stencil_resolve {
-                let attachment = attachments.last_mut().unwrap();
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.final_layout = if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
+                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                        };
+                        depth_stencil_set = true;
+                    }
+                }
+
+                // Resolved depth/stencil attachment
+                if !depth_stencil_resolve_set {
+                    if let Some((resolved_attachment, ..)) = exec.depth_stencil_resolve {
+                        let attachment = attachments.last_mut().unwrap();
+                        attachment.fmt = resolved_attachment.format;
+                        attachment.sample_count = resolved_attachment.sample_count;
+                        attachment.final_layout = if resolved_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                        {
+                            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                        } else if resolved_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                        } else {
+                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                        };
+                        depth_stencil_resolve_set = true;
+                    }
+                }
             }
         }
 
@@ -1439,15 +1456,17 @@ impl Resolver {
                                 );
 
                                 // Wait for ...
-                                dep.src_stage_mask |=
-                                    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
-                                dep.src_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
+                                dep.src_stage_mask |= vk::PipelineStageFlags::FRAGMENT_SHADER;
+                                dep.src_access_mask |=
+                                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
 
                                 // ... before we:
                                 dep.dst_stage_mask |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS;
-                                dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+                                dep.dst_access_mask |=
+                                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
                             }
 
+                            // TODO: Do we need to depend on a READ..READ between subpasses?
                             // look for reads in the other exec
                             if other.depth_stencil_load.is_some() {
                                 let dep = dependencies.entry((other_idx, exec_idx)).or_insert_with(
@@ -1456,11 +1475,13 @@ impl Resolver {
 
                                 // Wait for ...
                                 dep.src_stage_mask |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
-                                dep.src_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+                                dep.src_access_mask |=
+                                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
 
                                 // ... before we:
                                 dep.dst_stage_mask |= vk::PipelineStageFlags::FRAGMENT_SHADER;
-                                dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+                                dep.dst_access_mask |=
+                                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
                             }
                         }
 
@@ -1668,11 +1689,15 @@ impl Resolver {
                 dependencies.into_values().collect::<Vec<_>>()
             };
 
-        pool.lease(RenderPassInfo {
+        let info = RenderPassInfo {
             attachments,
             dependencies,
             subpasses,
-        })
+        };
+
+        trace!("{:#?}", info);
+
+        pool.lease(info)
     }
 
     #[profiling::function]

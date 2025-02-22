@@ -209,6 +209,14 @@ enum ExecutionPipeline {
 }
 
 impl ExecutionPipeline {
+    fn as_graphic(&self) -> Option<&GraphicPipeline> {
+        if let Self::Graphic(pipeline) = self {
+            Some(pipeline)
+        } else {
+            None
+        }
+    }
+
     fn bind_point(&self) -> vk::PipelineBindPoint {
         match self {
             ExecutionPipeline::Compute(_) => vk::PipelineBindPoint::COMPUTE,
