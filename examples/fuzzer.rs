@@ -45,6 +45,7 @@ static OPERATIONS: &[Operation] = &[
     record_graphic_will_merge_common_color2,
     record_graphic_will_merge_common_depth1,
     record_graphic_will_merge_common_depth2,
+    record_graphic_will_merge_common_depth3,
     record_graphic_wont_merge,
     record_accel_struct_builds,
     record_transfer_graphic_multipass,
@@ -1158,6 +1159,78 @@ fn record_graphic_will_merge_common_depth2(frame: &mut FrameContext, pool: &mut 
             .as_slice(),
         ))
         .store_color(0, color_image)
+        .load_depth_stencil(depth_image)
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_common_depth3(frame: &mut FrameContext, pool: &mut HashPool) {
+    let depth_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::D32_SFLOAT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() {
+                    gl_FragDepth = 0.0;
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() {
+                    gl_FragDepth = 0.0;
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
         .load_depth_stencil(depth_image)
         .store_depth_stencil(depth_image)
         .record_subpass(|subpass, _| {
