@@ -1,7 +1,7 @@
 mod profile_with_puffin;
 
 use {
-    bytemuck::cast_slice,
+    bytemuck::{bytes_of, cast_slice},
     clap::Parser,
     glam::{vec3, Mat4, Vec3, Vec4},
     inline_spirv::inline_spirv,
@@ -52,6 +52,7 @@ fn main() -> anyhow::Result<()> {
     let depth_stencil_format = best_depth_stencil_format(&window.device);
     let mut pool = LazyPool::new(&window.device);
     let fill_background = create_fill_background_pipeline(&window.device);
+    let prepass = create_prepass_pipeline(&window.device);
     let pbr = create_pbr_pipeline(&window.device);
     let funky_shape = create_funky_shape(&window.device, &mut pool)?;
 
@@ -83,9 +84,29 @@ fn main() -> anyhow::Result<()> {
         let push_const_data = write_push_consts(obj_pos, material);
 
         let mut write = DepthStencilMode::DEPTH_WRITE;
+
+        // Depth Prepass
+        frame
+            .render_graph
+            .begin_pass("Depth Prepass")
+            .bind_pipeline(&prepass)
+            .set_depth_stencil(write)
+            .read_descriptor(0, camera_buf)
+            .access_node(index_buf, AccessType::IndexBuffer)
+            .access_node(vertex_buf, AccessType::VertexBuffer)
+            .clear_depth_stencil(depth_stencil)
+            .store_depth_stencil(depth_stencil)
+            .record_subpass(move |subpass, _| {
+                subpass
+                    .bind_index_buffer(index_buf, vk::IndexType::UINT16)
+                    .bind_vertex_buffer(vertex_buf)
+                    .push_constants(bytes_of(&obj_pos))
+                    .draw_indexed(funky_shape.index_count, 1, 0, 0, 0);
+            });
+
         write.stencil_test = true;
         write.depth_test = false;
-        write.front.compare_op = vk::CompareOp::ALWAYS;
+        write.front.compare_op = vk::CompareOp::GREATER_OR_EQUAL;
         write.front.compare_mask = 0xff;
         write.front.write_mask = 0xff;
         write.front.reference = 0x01;
@@ -104,7 +125,7 @@ fn main() -> anyhow::Result<()> {
             .read_descriptor(1, light_buf)
             .access_node(index_buf, AccessType::IndexBuffer)
             .access_node(vertex_buf, AccessType::VertexBuffer)
-            .clear_depth_stencil(depth_stencil)
+            .load_depth_stencil(depth_stencil)
             .store_depth_stencil(depth_stencil)
             .store_color(0, frame.swapchain_image)
             .record_subpass(move |subpass, _| {
@@ -318,6 +339,83 @@ fn create_fill_background_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline>
             void main()
             {
                 color = vec4(vec3(0.75), 1.0);
+            }
+            "#,
+            frag
+        )
+        .as_slice(),
+    );
+
+    Arc::new(
+        GraphicPipeline::create(
+            device,
+            GraphicPipelineInfo::default(),
+            [vertex_shader, fragment_shader],
+        )
+        .unwrap(),
+    )
+}
+
+fn create_prepass_pipeline(device: &Arc<Device>) -> Arc<GraphicPipeline> {
+    let vertex_shader = Shader::new_vertex(
+        inline_spirv!(
+            r#"
+            #version 450
+
+            layout (location = 0) in vec3 inPos;
+            layout (location = 1) in vec3 inNormal;
+
+            layout (binding = 0) uniform UBO
+            {
+                mat4 projection;
+                mat4 model;
+                mat4 view;
+                vec3 camPos;
+            } ubo;
+
+            layout (location = 0) out vec3 outWorldPos;
+            layout (location = 1) out vec3 outNormal;
+
+            layout(push_constant) uniform PushConsts {
+                vec3 objPos;
+            } pushConsts;
+
+            out gl_PerVertex 
+            {
+                vec4 gl_Position;
+            };
+
+            void main() 
+            {
+                vec3 locPos = vec3(ubo.model * vec4(inPos, 1.0));
+                outWorldPos = locPos + pushConsts.objPos;
+                outNormal = mat3(ubo.model) * inNormal;
+                gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
+            }
+            "#,
+            vert
+        )
+        .as_slice(),
+    );
+
+    let fragment_shader = Shader::new_fragment(
+        inline_spirv!(
+            r#"
+            #version 450
+
+            layout (location = 0) in vec3 inWorldPos;
+            layout (location = 1) in vec3 inNormal;
+
+            layout (binding = 0) uniform UBO 
+            {
+                mat4 projection;
+                mat4 model;
+                mat4 view;
+                vec3 camPos;
+            } ubo;
+
+            void main()
+            {
             }
             "#,
             frag

@@ -270,6 +270,14 @@ pub(super) const fn image_access_layout(access: AccessType) -> ImageLayout {
     }
 }
 
+pub(super) const fn initial_image_layout_access(ty: AccessType) -> AccessType {
+    use AccessType::*;
+    match ty {
+        DepthStencilAttachmentReadWrite => DepthStencilAttachmentRead,
+        _ => ty,
+    }
+}
+
 pub(super) const fn is_read_access(ty: AccessType) -> bool {
     !is_write_access(ty)
 }

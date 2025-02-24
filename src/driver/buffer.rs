@@ -511,7 +511,7 @@ where
         };
 
         // The needle will always be odd, and the probe always even, the result will always be err
-        let needle = access_range.start << 1 | 1;
+        let needle = (access_range.start << 1) | 1;
         let idx = buffer
             .accesses
             .binary_search_by(|(_, probe)| (probe << 1).cmp(&needle));

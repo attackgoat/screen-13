@@ -9,9 +9,10 @@ use {
             accel_struct::AccelerationStructure,
             buffer::Buffer,
             format_aspect_mask,
-            graphic::DepthStencilMode,
-            image::{Image, ImageViewInfo},
-            image_access_layout, is_read_access, is_write_access, pipeline_stage_access_flags,
+            graphic::{DepthStencilMode, GraphicPipeline},
+            image::{Image, ImageAccess, ImageViewInfo},
+            image_access_layout, initial_image_layout_access, is_read_access, is_write_access,
+            pipeline_stage_access_flags,
             swapchain::SwapchainImage,
             AttachmentInfo, AttachmentRef, CommandBuffer, CommandBufferInfo, Descriptor,
             DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet, DriverError,
@@ -33,6 +34,9 @@ use {
     },
     vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
 };
+
+#[cfg(not(debug_assertions))]
+use std::hint::unreachable_unchecked;
 
 #[derive(Default)]
 struct AccessCache {
@@ -133,6 +137,24 @@ impl AccessCache {
     }
 }
 
+struct ImageSubresourceRangeDebug(vk::ImageSubresourceRange);
+
+impl std::fmt::Debug for ImageSubresourceRangeDebug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.aspect_mask.fmt(f)?;
+
+        f.write_str(" array: ")?;
+
+        let array_layers = self.0.base_array_layer..self.0.base_array_layer + self.0.layer_count;
+        array_layers.fmt(f)?;
+
+        f.write_str(" mip: ")?;
+
+        let mip_levels = self.0.base_mip_level..self.0.base_mip_level + self.0.level_count;
+        mip_levels.fmt(f)
+    }
+}
+
 #[derive(Debug)]
 struct PhysicalPass {
     descriptor_pool: Option<Lease<DescriptorPool>>,
@@ -169,37 +191,33 @@ impl Resolver {
 
     #[profiling::function]
     fn allow_merge_passes(lhs: &Pass, rhs: &Pass) -> bool {
-        let lhs_pipeline = lhs
-            .execs
-            .first()
-            .map(|exec| exec.pipeline.as_ref())
-            .filter(|pipeline| matches!(pipeline, Some(ExecutionPipeline::Graphic(_))))
-            .flatten();
-        let rhs_pipeline = rhs
-            .execs
-            .first()
-            .map(|exec| exec.pipeline.as_ref())
-            .filter(|pipeline| matches!(pipeline, Some(ExecutionPipeline::Graphic(_))))
-            .flatten();
+        fn first_graphic_pipeline(pass: &Pass) -> Option<&GraphicPipeline> {
+            pass.execs
+                .first()
+                .and_then(|exec| exec.pipeline.as_ref().map(ExecutionPipeline::as_graphic))
+                .flatten()
+        }
 
-        // Both must have graphic pipelines
-        if lhs_pipeline.is_none() || rhs_pipeline.is_none() {
-            trace!(
-                "  {} is {}graphic",
-                lhs.name,
-                if lhs_pipeline.is_none() { "not " } else { "" }
-            );
-            trace!(
-                "  {} is {}graphic",
-                rhs.name,
-                if rhs_pipeline.is_none() { "not " } else { "" }
-            );
+        fn is_multiview(view_mask: u32) -> bool {
+            view_mask != 0
+        }
+
+        let lhs_pipeline = first_graphic_pipeline(lhs);
+        if lhs_pipeline.is_none() {
+            trace!("  {} is not graphic", lhs.name,);
 
             return false;
         }
 
-        let lhs_pipeline = lhs_pipeline.unwrap().unwrap_graphic();
-        let rhs_pipeline = rhs_pipeline.unwrap().unwrap_graphic();
+        let rhs_pipeline = first_graphic_pipeline(rhs);
+        if rhs_pipeline.is_none() {
+            trace!("  {} is not graphic", rhs.name,);
+
+            return false;
+        }
+
+        let lhs_pipeline = unsafe { lhs_pipeline.unwrap_unchecked() };
+        let rhs_pipeline = unsafe { rhs_pipeline.unwrap_unchecked() };
 
         // Must be same general rasterization modes
         if lhs_pipeline.info.blend != rhs_pipeline.info.blend
@@ -213,68 +231,54 @@ impl Resolver {
             return false;
         }
 
-        let rhs_exec = rhs.execs.first().unwrap();
-        let rhs_depth_stencil = rhs_exec
-            .depth_stencil_attachment
-            .or(rhs_exec.depth_stencil_load)
-            .or(rhs_exec.depth_stencil_store)
-            .or_else(|| {
-                rhs_exec
-                    .depth_stencil_resolve
-                    .map(|(attachment, ..)| attachment)
-            })
-            .or_else(|| {
-                rhs_exec
-                    .depth_stencil_clear
-                    .map(|(attachment, _)| attachment)
-            });
+        let rhs = rhs.execs.first();
+
+        // PassRef makes sure this never happens
+        debug_assert!(rhs.is_some());
+
+        let rhs = unsafe { rhs.unwrap_unchecked() };
+
+        let mut common_color_attachment = false;
+        let mut common_depth_attachment = false;
 
         // Now we need to know what the subpasses (we may have prior merges) wrote
-        for lhs_exec in lhs.execs.iter().rev() {
-            let mut common_color_attachment = false;
-
+        for lhs in lhs.execs.iter().rev() {
             // Multiview subpasses cannot be combined with non-multiview subpasses
-            if (lhs_exec.view_mask == 0 && rhs_exec.view_mask != 0)
-                || (lhs_exec.view_mask != 0 && rhs_exec.view_mask == 0)
-            {
-                trace!("  incompatible multiview setting");
+            if is_multiview(lhs.view_mask) != is_multiview(rhs.view_mask) {
+                trace!("  incompatible multiview");
 
                 return false;
             }
 
             // Compare individual color attachments for compatibility
-            for (attachment_idx, lhs_attachment) in lhs_exec
+            for (attachment_idx, lhs_attachment) in lhs
                 .color_attachments
                 .iter()
-                .chain(lhs_exec.color_loads.iter())
-                .chain(lhs_exec.color_stores.iter())
+                .chain(lhs.color_loads.iter())
+                .chain(lhs.color_stores.iter())
                 .chain(
-                    lhs_exec
-                        .color_clears
+                    lhs.color_clears
                         .iter()
                         .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
                 )
                 .chain(
-                    lhs_exec
-                        .color_resolves
+                    lhs.color_resolves
                         .iter()
                         .map(|(attachment_idx, (attachment, _))| (attachment_idx, attachment)),
                 )
             {
-                let rhs_attachment = rhs_exec
+                let rhs_attachment = rhs
                     .color_attachments
                     .get(attachment_idx)
-                    .or_else(|| rhs_exec.color_loads.get(attachment_idx))
-                    .or_else(|| rhs_exec.color_stores.get(attachment_idx))
+                    .or_else(|| rhs.color_loads.get(attachment_idx))
+                    .or_else(|| rhs.color_stores.get(attachment_idx))
                     .or_else(|| {
-                        rhs_exec
-                            .color_clears
+                        rhs.color_clears
                             .get(attachment_idx)
                             .map(|(attachment, _)| attachment)
                     })
                     .or_else(|| {
-                        rhs_exec
-                            .color_resolves
+                        rhs.color_resolves
                             .get(attachment_idx)
                             .map(|(attachment, _)| attachment)
                     });
@@ -283,41 +287,40 @@ impl Resolver {
                     trace!("  incompatible color attachments");
 
                     return false;
-                } else {
-                    common_color_attachment = true;
                 }
+
+                common_color_attachment = true;
             }
 
             // Compare depth/stencil attachments for compatibility
-            let lhs_depth_stencil = lhs_exec
+            let lhs_depth_stencil = lhs
                 .depth_stencil_attachment
-                .or(lhs_exec.depth_stencil_load)
-                .or(lhs_exec.depth_stencil_store)
-                .or_else(|| {
-                    lhs_exec
-                        .depth_stencil_resolve
-                        .map(|(attachment, ..)| attachment)
-                })
-                .or_else(|| {
-                    lhs_exec
-                        .depth_stencil_clear
-                        .map(|(attachment, _)| attachment)
-                });
+                .or(lhs.depth_stencil_load)
+                .or(lhs.depth_stencil_store)
+                .or_else(|| lhs.depth_stencil_resolve.map(|(attachment, ..)| attachment))
+                .or_else(|| lhs.depth_stencil_clear.map(|(attachment, _)| attachment));
+
+            let rhs_depth_stencil = rhs
+                .depth_stencil_attachment
+                .or(rhs.depth_stencil_load)
+                .or(rhs.depth_stencil_store)
+                .or_else(|| rhs.depth_stencil_resolve.map(|(attachment, ..)| attachment))
+                .or_else(|| rhs.depth_stencil_clear.map(|(attachment, _)| attachment));
+
             if !Attachment::are_compatible(lhs_depth_stencil, rhs_depth_stencil) {
                 trace!("  incompatible depth/stencil attachments");
 
                 return false;
             }
 
-            let common_depth_attachment =
-                lhs_depth_stencil.is_some() && rhs_depth_stencil.is_some();
+            common_depth_attachment |= lhs_depth_stencil.is_some() && rhs_depth_stencil.is_some();
+        }
 
-            // Keep color and depth on tile.
-            if common_color_attachment || common_depth_attachment {
-                trace!("  merging due to common image");
+        // Keep color and depth on tile.
+        if common_color_attachment || common_depth_attachment {
+            trace!("  merging due to common image");
 
-                return true;
-            }
+            return true;
         }
 
         // Keep input on tile
@@ -742,7 +745,7 @@ impl Resolver {
         pass: &Pass,
     ) -> Result<Option<Lease<DescriptorPool>>, DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool>,
     {
         let max_set_idx = pass
             .execs
@@ -844,7 +847,7 @@ impl Resolver {
         pass_idx: usize,
     ) -> Result<Lease<RenderPass>, DriverError>
     where
-        P: Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<RenderPassInfo, RenderPass>,
     {
         let pass = &self.graph.passes[pass_idx];
         let (mut color_attachment_count, mut depth_stencil_attachment_count) = (0, 0);
@@ -901,147 +904,192 @@ impl Resolver {
 
         let mut subpasses = Vec::<SubpassInfo>::with_capacity(pass.execs.len());
 
-        // Add load op attachments using the first execution
         {
-            let first_exec = &pass.execs[0];
+            let mut color_set = vec![false; attachment_count];
+            let mut depth_stencil_set = false;
 
-            // Cleared color attachments
-            for (attachment_idx, (cleared_attachment, _)) in &first_exec.color_clears {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = cleared_attachment.format;
-                attachment.sample_count = cleared_attachment.sample_count;
-                attachment.load_op = vk::AttachmentLoadOp::CLEAR;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-            }
+            // Add load op attachments using the first executions
+            for exec in &pass.execs {
+                // Cleared color attachments
+                for (attachment_idx, (cleared_attachment, _)) in &exec.color_clears {
+                    let color_set = &mut color_set[*attachment_idx as usize];
+                    if *color_set {
+                        continue;
+                    }
 
-            // Loaded color attachments
-            for (attachment_idx, loaded_attachment) in &first_exec.color_loads {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = loaded_attachment.format;
-                attachment.sample_count = loaded_attachment.sample_count;
-                attachment.load_op = vk::AttachmentLoadOp::LOAD;
-                attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-            }
-
-            // Cleared depth/stencil attachment
-            if let Some((cleared_attachment, _)) = first_exec.depth_stencil_clear {
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = cleared_attachment.format;
-                attachment.sample_count = cleared_attachment.sample_count;
-                attachment.initial_layout = if cleared_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
+                    let attachment = &mut attachments[*attachment_idx as usize];
+                    attachment.fmt = cleared_attachment.format;
+                    attachment.sample_count = cleared_attachment.sample_count;
                     attachment.load_op = vk::AttachmentLoadOp::CLEAR;
-                    attachment.stencil_load_op = vk::AttachmentLoadOp::CLEAR;
+                    attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                    *color_set = true;
+                }
 
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if cleared_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    attachment.load_op = vk::AttachmentLoadOp::CLEAR;
+                // Loaded color attachments
+                for (attachment_idx, loaded_attachment) in &exec.color_loads {
+                    let color_set = &mut color_set[*attachment_idx as usize];
+                    if *color_set {
+                        continue;
+                    }
 
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    attachment.stencil_load_op = vk::AttachmentLoadOp::CLEAR;
-
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-            } else if let Some(loaded_attachment) = first_exec.depth_stencil_load {
-                // Loaded depth/stencil attachment
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = loaded_attachment.format;
-                attachment.sample_count = loaded_attachment.sample_count;
-                attachment.initial_layout = if loaded_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
+                    let attachment = &mut attachments[*attachment_idx as usize];
+                    attachment.fmt = loaded_attachment.format;
+                    attachment.sample_count = loaded_attachment.sample_count;
                     attachment.load_op = vk::AttachmentLoadOp::LOAD;
-                    attachment.stencil_load_op = vk::AttachmentLoadOp::LOAD;
+                    attachment.initial_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                    *color_set = true;
+                }
 
-                    vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                } else if loaded_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    attachment.load_op = vk::AttachmentLoadOp::LOAD;
+                // Cleared depth/stencil attachment
+                if !depth_stencil_set {
+                    if let Some((cleared_attachment, _)) = exec.depth_stencil_clear {
+                        let attachment = &mut attachments[color_attachment_count];
+                        attachment.fmt = cleared_attachment.format;
+                        attachment.sample_count = cleared_attachment.sample_count;
+                        attachment.initial_layout = if cleared_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                        {
+                            attachment.load_op = vk::AttachmentLoadOp::CLEAR;
+                            attachment.stencil_load_op = vk::AttachmentLoadOp::CLEAR;
 
-                    vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-                } else {
-                    attachment.stencil_load_op = vk::AttachmentLoadOp::LOAD;
+                            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                        } else if cleared_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            attachment.load_op = vk::AttachmentLoadOp::CLEAR;
 
-                    vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
-                };
+                            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                        } else {
+                            attachment.stencil_load_op = vk::AttachmentLoadOp::CLEAR;
+
+                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                        };
+                        depth_stencil_set = true;
+                    } else if let Some(loaded_attachment) = exec.depth_stencil_load {
+                        // Loaded depth/stencil attachment
+                        let attachment = &mut attachments[color_attachment_count];
+                        attachment.fmt = loaded_attachment.format;
+                        attachment.sample_count = loaded_attachment.sample_count;
+                        attachment.initial_layout = if loaded_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                        {
+                            attachment.load_op = vk::AttachmentLoadOp::LOAD;
+                            attachment.stencil_load_op = vk::AttachmentLoadOp::LOAD;
+
+                            vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                        } else if loaded_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            attachment.load_op = vk::AttachmentLoadOp::LOAD;
+
+                            vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+                        } else {
+                            attachment.stencil_load_op = vk::AttachmentLoadOp::LOAD;
+
+                            vk::ImageLayout::STENCIL_READ_ONLY_OPTIMAL
+                        };
+                        depth_stencil_set = true;
+                    } else if exec.depth_stencil_clear.is_some()
+                        || exec.depth_stencil_store.is_some()
+                    {
+                        depth_stencil_set = true;
+                    }
+                }
             }
         }
 
-        // Add store op attachments using the last execution
         {
-            let last_exec = pass.execs.last().unwrap();
+            let mut color_set = vec![false; attachment_count];
+            let mut depth_stencil_set = false;
+            let mut depth_stencil_resolve_set = false;
 
-            // Resolved color attachments
-            for (attachment_idx, (resolved_attachment, _)) in &last_exec.color_resolves {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-            }
+            // Add store op attachments using the last executions
+            for exec in pass.execs.iter().rev() {
+                // Resolved color attachments
+                for (attachment_idx, (resolved_attachment, _)) in &exec.color_resolves {
+                    let color_set = &mut color_set[*attachment_idx as usize];
+                    if *color_set {
+                        continue;
+                    }
 
-            // Stored color attachments
-            for (attachment_idx, stored_attachment) in &last_exec.color_stores {
-                let attachment = &mut attachments[*attachment_idx as usize];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.store_op = vk::AttachmentStoreOp::STORE;
-                attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-            }
+                    let attachment = &mut attachments[*attachment_idx as usize];
+                    attachment.fmt = resolved_attachment.format;
+                    attachment.sample_count = resolved_attachment.sample_count;
+                    attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                    *color_set = true;
+                }
 
-            // Stored depth/stencil attachment
-            if let Some(stored_attachment) = last_exec.depth_stencil_store {
-                let attachment = &mut attachments[color_attachment_count];
-                attachment.fmt = stored_attachment.format;
-                attachment.sample_count = stored_attachment.sample_count;
-                attachment.final_layout = if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
+                // Stored color attachments
+                for (attachment_idx, stored_attachment) in &exec.color_stores {
+                    let color_set = &mut color_set[*attachment_idx as usize];
+                    if *color_set {
+                        continue;
+                    }
+
+                    let attachment = &mut attachments[*attachment_idx as usize];
+                    attachment.fmt = stored_attachment.format;
+                    attachment.sample_count = stored_attachment.sample_count;
                     attachment.store_op = vk::AttachmentStoreOp::STORE;
-                    attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
+                    attachment.final_layout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                    *color_set = true;
+                }
 
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if stored_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    attachment.store_op = vk::AttachmentStoreOp::STORE;
+                // Stored depth/stencil attachment
+                if !depth_stencil_set {
+                    if let Some(stored_attachment) = exec.depth_stencil_store {
+                        let attachment = &mut attachments[color_attachment_count];
+                        attachment.fmt = stored_attachment.format;
+                        attachment.sample_count = stored_attachment.sample_count;
+                        attachment.final_layout = if stored_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                        {
+                            attachment.store_op = vk::AttachmentStoreOp::STORE;
+                            attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
 
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
+                            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                        } else if stored_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            attachment.store_op = vk::AttachmentStoreOp::STORE;
 
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
-            }
+                            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                        } else {
+                            attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
 
-            // Resolved depth/stencil attachment
-            if let Some((resolved_attachment, ..)) = last_exec.depth_stencil_resolve {
-                let attachment = attachments.last_mut().unwrap();
-                attachment.fmt = resolved_attachment.format;
-                attachment.sample_count = resolved_attachment.sample_count;
-                attachment.final_layout = if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                {
-                    vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                } else if resolved_attachment
-                    .aspect_mask
-                    .contains(vk::ImageAspectFlags::DEPTH)
-                {
-                    vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                } else {
-                    vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                };
+                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                        };
+                        depth_stencil_set = true;
+                    }
+                }
+
+                // Resolved depth/stencil attachment
+                if !depth_stencil_resolve_set {
+                    if let Some((resolved_attachment, ..)) = exec.depth_stencil_resolve {
+                        let attachment = attachments.last_mut().unwrap();
+                        attachment.fmt = resolved_attachment.format;
+                        attachment.sample_count = resolved_attachment.sample_count;
+                        attachment.final_layout = if resolved_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                        {
+                            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                        } else if resolved_attachment
+                            .aspect_mask
+                            .contains(vk::ImageAspectFlags::DEPTH)
+                        {
+                            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                        } else {
+                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                        };
+                        depth_stencil_resolve_set = true;
+                    }
+                }
             }
         }
 
@@ -1410,15 +1458,17 @@ impl Resolver {
                                 );
 
                                 // Wait for ...
-                                dep.src_stage_mask |=
-                                    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
-                                dep.src_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
+                                dep.src_stage_mask |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
+                                dep.src_access_mask |=
+                                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
 
                                 // ... before we:
                                 dep.dst_stage_mask |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS;
-                                dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+                                dep.dst_access_mask |=
+                                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
                             }
 
+                            // TODO: Do we need to depend on a READ..READ between subpasses?
                             // look for reads in the other exec
                             if other.depth_stencil_load.is_some() {
                                 let dep = dependencies.entry((other_idx, exec_idx)).or_insert_with(
@@ -1427,11 +1477,13 @@ impl Resolver {
 
                                 // Wait for ...
                                 dep.src_stage_mask |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
-                                dep.src_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+                                dep.src_access_mask |=
+                                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
 
                                 // ... before we:
                                 dep.dst_stage_mask |= vk::PipelineStageFlags::FRAGMENT_SHADER;
-                                dep.dst_access_mask |= vk::AccessFlags::COLOR_ATTACHMENT_READ;
+                                dep.dst_access_mask |=
+                                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
                             }
                         }
 
@@ -1639,6 +1691,14 @@ impl Resolver {
                 dependencies.into_values().collect::<Vec<_>>()
             };
 
+        // let info = RenderPassInfo {
+        //     attachments,
+        //     dependencies,
+        //     subpasses,
+        // };
+
+        // trace!("{:#?}", info);
+
         pool.lease(RenderPassInfo {
             attachments,
             dependencies,
@@ -1653,7 +1713,7 @@ impl Resolver {
         schedule: &[usize],
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         for pass_idx in schedule.iter().copied() {
             // At the time this function runs the pass will already have been optimized into a
@@ -1862,30 +1922,21 @@ impl Resolver {
 
     #[profiling::function]
     fn record_execution_barriers<'a>(
-        trace_pad: &'static str,
         cmd_buf: &CommandBuffer,
         bindings: &mut [Binding],
-        accesses: impl IntoIterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
+        accesses: impl Iterator<Item = (&'a NodeIndex, &'a Vec<SubresourceAccess>)>,
     ) {
         use std::slice::from_ref;
 
         // We store a Barriers in TLS to save an alloc; contents are POD
         thread_local! {
-            static BARRIERS: RefCell<Barriers> = Default::default();
+            static TLS: RefCell<Tls> = Default::default();
         }
 
         struct Barrier<T> {
             next_access: AccessType,
             prev_access: AccessType,
             resource: T,
-        }
-
-        #[derive(Default)]
-        struct Barriers {
-            buffers: Vec<Barrier<BufferResource>>,
-            images: Vec<Barrier<ImageResource>>,
-            next_accesses: Vec<AccessType>,
-            prev_accesses: Vec<AccessType>,
         }
 
         struct BufferResource {
@@ -1899,12 +1950,20 @@ impl Resolver {
             range: vk::ImageSubresourceRange,
         }
 
-        BARRIERS.with_borrow_mut(|barriers| {
+        #[derive(Default)]
+        struct Tls {
+            buffers: Vec<Barrier<BufferResource>>,
+            images: Vec<Barrier<ImageResource>>,
+            next_accesses: Vec<AccessType>,
+            prev_accesses: Vec<AccessType>,
+        }
+
+        TLS.with_borrow_mut(|tls| {
             // Initialize TLS from a previous call
-            barriers.buffers.clear();
-            barriers.images.clear();
-            barriers.next_accesses.clear();
-            barriers.prev_accesses.clear();
+            tls.buffers.clear();
+            tls.images.clear();
+            tls.next_accesses.clear();
+            tls.prev_accesses.clear();
 
             // Map remaining accesses into vk_sync barriers (some accesses may have been removed by the
             // render pass leasing function)
@@ -1915,22 +1974,38 @@ impl Resolver {
                 match binding {
                     Binding::AccelerationStructure(..)
                     | Binding::AccelerationStructureLease(..) => {
-                        let accel_struct = binding.as_driver_acceleration_structure().unwrap();
+                        let Some(accel_struct) = binding.as_driver_acceleration_structure() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
 
                         let prev_access = AccelerationStructure::access(
                             accel_struct,
                             accesses.last().unwrap().access,
                         );
 
-                        barriers.next_accesses.extend(
+                        tls.next_accesses.extend(
                             accesses
                                 .iter()
                                 .map(|&SubresourceAccess { access, .. }| access),
                         );
-                        barriers.prev_accesses.push(prev_access);
+                        tls.prev_accesses.push(prev_access);
                     }
                     Binding::Buffer(..) | Binding::BufferLease(..) => {
-                        let buffer = binding.as_driver_buffer().unwrap();
+                        let Some(buffer) = binding.as_driver_buffer() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
 
                         for &SubresourceAccess {
                             access,
@@ -1942,7 +2017,7 @@ impl Resolver {
                             };
 
                             for (prev_access, range) in Buffer::access(buffer, access, range) {
-                                barriers.buffers.push(Barrier {
+                                tls.buffers.push(Barrier {
                                     next_access: access,
                                     prev_access,
                                     resource: BufferResource {
@@ -1955,7 +2030,15 @@ impl Resolver {
                         }
                     }
                     Binding::Image(..) | Binding::ImageLease(..) | Binding::SwapchainImage(..) => {
-                        let image = binding.as_driver_image().unwrap();
+                        let Some(image) = binding.as_driver_image() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
 
                         for &SubresourceAccess {
                             access,
@@ -1967,7 +2050,7 @@ impl Resolver {
                             };
 
                             for (prev_access, range) in Image::access(image, access, range) {
-                                barriers.images.push(Barrier {
+                                tls.images.push(Barrier {
                                     next_access: access,
                                     prev_access,
                                     resource: ImageResource {
@@ -1981,22 +2064,22 @@ impl Resolver {
                 }
             }
 
-            let global_barrier = if !barriers.next_accesses.is_empty() {
+            let global_barrier = if !tls.next_accesses.is_empty() {
                 // No resource attached - we use a global barrier for these
                 trace!(
-                    "{trace_pad}global {:?}->{:?}",
-                    barriers.next_accesses,
-                    barriers.prev_accesses
+                    "    global {:?}->{:?}",
+                    tls.next_accesses,
+                    tls.prev_accesses
                 );
 
                 Some(GlobalBarrier {
-                    next_accesses: barriers.next_accesses.as_slice(),
-                    previous_accesses: barriers.prev_accesses.as_slice(),
+                    next_accesses: tls.next_accesses.as_slice(),
+                    previous_accesses: tls.prev_accesses.as_slice(),
                 })
             } else {
                 None
             };
-            let buffer_barriers = barriers.buffers.iter().map(
+            let buffer_barriers = tls.buffers.iter().map(
                 |Barrier {
                      next_access,
                      prev_access,
@@ -2009,7 +2092,7 @@ impl Resolver {
                     } = *resource;
 
                     trace!(
-                        "{trace_pad}buffer {:?} {:?} {:?}->{:?}",
+                        "    buffer {:?} {:?} {:?}->{:?}",
                         buffer,
                         offset..offset + size,
                         prev_access,
@@ -2027,7 +2110,7 @@ impl Resolver {
                     }
                 },
             );
-            let image_barriers = barriers.images.iter().map(
+            let image_barriers = tls.images.iter().map(
                 |Barrier {
                      next_access,
                      prev_access,
@@ -2056,7 +2139,7 @@ impl Resolver {
                     }
 
                     trace!(
-                        "{trace_pad}image {:?} {:?} {:?}->{:?}",
+                        "    image {:?} {:?} {:?}->{:?}",
                         image,
                         ImageSubresourceRangeDebug(range),
                         prev_access,
@@ -2084,6 +2167,189 @@ impl Resolver {
                 global_barrier,
                 &buffer_barriers.collect::<Box<[_]>>(),
                 &image_barriers.collect::<Box<[_]>>(),
+            );
+        });
+    }
+
+    #[profiling::function]
+    fn record_image_layout_transitions(
+        cmd_buf: &CommandBuffer,
+        bindings: &mut [Binding],
+        pass: &mut Pass,
+    ) {
+        use std::slice::from_ref;
+
+        // We store a Barriers in TLS to save an alloc; contents are POD
+        thread_local! {
+            static TLS: RefCell<Tls> = Default::default();
+        }
+
+        struct ImageResourceBarrier {
+            image: vk::Image,
+            next_access: AccessType,
+            prev_access: AccessType,
+            range: vk::ImageSubresourceRange,
+        }
+
+        #[derive(Default)]
+        struct Tls {
+            images: Vec<ImageResourceBarrier>,
+            initial_layouts: HashMap<usize, ImageAccess<bool>>,
+        }
+
+        TLS.with_borrow_mut(|tls| {
+            tls.images.clear();
+            tls.initial_layouts.clear();
+
+            for (node_idx, accesses) in pass
+                .execs
+                .iter_mut()
+                .flat_map(|exec| exec.accesses.iter())
+                .map(|(node_idx, accesses)| (*node_idx, accesses))
+            {
+                debug_assert!(bindings.get(node_idx).is_some());
+
+                let binding = unsafe {
+                    // PassRef enforces this using assert_bound_graph_node
+                    bindings.get_unchecked(node_idx)
+                };
+
+                match binding {
+                    Binding::AccelerationStructure(..)
+                    | Binding::AccelerationStructureLease(..) => {
+                        let Some(accel_struct) = binding.as_driver_acceleration_structure() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
+
+                        AccelerationStructure::access(accel_struct, AccessType::Nothing);
+                    }
+                    Binding::Buffer(..) | Binding::BufferLease(..) => {
+                        let Some(buffer) = binding.as_driver_buffer() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
+
+                        for subresource_access in accesses {
+                            let &SubresourceAccess {
+                                subresource: Subresource::Buffer(access_range),
+                                ..
+                            } = subresource_access
+                            else {
+                                #[cfg(debug_assertions)]
+                                unreachable!();
+
+                                #[cfg(not(debug_assertions))]
+                                unsafe {
+                                    // This cannot be reached because PassRef enforces the subrange is
+                                    // of type N::Subresource where N is the image node type
+                                    unreachable_unchecked()
+                                }
+                            };
+
+                            for _ in Buffer::access(buffer, AccessType::Nothing, access_range) {}
+                        }
+                    }
+                    Binding::Image(..) | Binding::ImageLease(..) | Binding::SwapchainImage(..) => {
+                        let Some(image) = binding.as_driver_image() else {
+                            #[cfg(debug_assertions)]
+                            unreachable!();
+
+                            #[cfg(not(debug_assertions))]
+                            unsafe {
+                                unreachable_unchecked()
+                            }
+                        };
+
+                        let initial_layout = tls
+                            .initial_layouts
+                            .entry(node_idx)
+                            .or_insert_with(|| ImageAccess::new(image.info, true));
+
+                        for subresource_access in accesses {
+                            let &SubresourceAccess {
+                                access,
+                                subresource: Subresource::Image(access_range),
+                            } = subresource_access
+                            else {
+                                #[cfg(debug_assertions)]
+                                unreachable!();
+
+                                #[cfg(not(debug_assertions))]
+                                unsafe {
+                                    // This cannot be reached because PassRef enforces the subrange is
+                                    // of type N::Subresource where N is the image node type
+                                    unreachable_unchecked()
+                                }
+                            };
+
+                            for layout_range in
+                                initial_layout.access(false, access_range).filter_map(
+                                    |(initial, access_range)| initial.then_some(access_range),
+                                )
+                            {
+                                for (prev_access, range) in
+                                    Image::access(image, AccessType::Nothing, layout_range)
+                                {
+                                    tls.images.push(ImageResourceBarrier {
+                                        image: **image,
+                                        next_access: initial_image_layout_access(access),
+                                        prev_access,
+                                        range,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let image_barriers = tls.images.iter().map(
+                |ImageResourceBarrier {
+                     image,
+                     next_access,
+                     prev_access,
+                     range,
+                 }| {
+                    trace!(
+                        "    image {:?} {:?} {:?}->{:?}",
+                        image,
+                        ImageSubresourceRangeDebug(*range),
+                        prev_access,
+                        next_access,
+                    );
+
+                    ImageBarrier {
+                        next_accesses: from_ref(next_access),
+                        next_layout: image_access_layout(*next_access),
+                        previous_accesses: from_ref(prev_access),
+                        previous_layout: image_access_layout(*prev_access),
+                        discard_contents: *prev_access == AccessType::Nothing
+                            || is_write_access(*next_access),
+                        src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
+                        image: *image,
+                        range: *range,
+                    }
+                },
+            );
+
+            pipeline_barrier(
+                &cmd_buf.device,
+                **cmd_buf,
+                None,
+                &[],
+                &image_barriers.collect::<Box<_>>(),
             );
         });
     }
@@ -2125,7 +2391,7 @@ impl Resolver {
         node: impl Node,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         let node_idx = node.index();
 
@@ -2148,7 +2414,7 @@ impl Resolver {
         end_pass_idx: usize,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         thread_local! {
             static SCHEDULE: RefCell<Schedule> = Default::default();
@@ -2172,7 +2438,7 @@ impl Resolver {
         end_pass_idx: usize,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         if schedule.passes.is_empty() {
             return Ok(());
@@ -2208,14 +2474,9 @@ impl Resolver {
                 Self::write_descriptor_sets(cmd_buf, &self.graph.bindings, pass, physical_pass)?;
             }
 
-            Self::record_execution_barriers(
-                "  ",
-                cmd_buf,
-                &mut self.graph.bindings,
-                &pass.execs[0].accesses,
-            );
-
             let render_area = if is_graphic {
+                Self::record_image_layout_transitions(cmd_buf, &mut self.graph.bindings, pass);
+
                 let render_area = Self::render_area(&self.graph.bindings, pass);
 
                 Self::begin_render_pass(
@@ -2283,12 +2544,11 @@ impl Resolver {
                     Self::bind_descriptor_sets(cmd_buf, pipeline, physical_pass, exec_idx);
                 }
 
-                if exec_idx > 0 && !is_graphic {
+                if !is_graphic {
                     Self::record_execution_barriers(
-                        "    ",
                         cmd_buf,
                         &mut self.graph.bindings,
-                        &exec.accesses,
+                        exec.accesses.iter(),
                     );
                 }
 
@@ -2360,7 +2620,7 @@ impl Resolver {
         cmd_buf: &mut CommandBuffer,
     ) -> Result<(), DriverError>
     where
-        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass> + ?Sized,
+        P: Pool<DescriptorPoolInfo, DescriptorPool> + Pool<RenderPassInfo, RenderPass>,
     {
         if self.graph.passes.is_empty() {
             return Ok(());
@@ -2397,6 +2657,13 @@ impl Resolver {
             .map(|(attachment, _)| attachment)
             .chain(first_exec.color_loads.values().copied())
             .chain(first_exec.color_stores.values().copied())
+            .chain(
+                first_exec
+                    .depth_stencil_clear
+                    .map(|(attachment, _)| attachment),
+            )
+            .chain(first_exec.depth_stencil_load)
+            .chain(first_exec.depth_stencil_store)
             .map(|attachment| {
                 let info = bindings[attachment.target].as_driver_image().unwrap().info;
 

@@ -64,7 +64,7 @@ struct Area {
     y: i32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 struct Attachment {
     array_layer_count: u32,
     aspect_mask: vk::ImageAspectFlags,
@@ -209,6 +209,14 @@ enum ExecutionPipeline {
 }
 
 impl ExecutionPipeline {
+    fn as_graphic(&self) -> Option<&GraphicPipeline> {
+        if let Self::Graphic(pipeline) = self {
+            Some(pipeline)
+        } else {
+            None
+        }
+    }
+
     fn bind_point(&self) -> vk::PipelineBindPoint {
         match self {
             ExecutionPipeline::Compute(_) => vk::PipelineBindPoint::COMPUTE,
