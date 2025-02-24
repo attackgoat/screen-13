@@ -20,6 +20,7 @@ pub struct Swapchain {
     device: Arc<Device>,
     images: Box<[SwapchainImage]>,
     info: SwapchainInfo,
+    old_swapchain: vk::SwapchainKHR,
     suboptimal: bool,
     surface: Surface,
     swapchain: vk::SwapchainKHR,
@@ -41,6 +42,7 @@ impl Swapchain {
             device,
             images: Default::default(),
             info,
+            old_swapchain: vk::SwapchainKHR::null(),
             suboptimal: true,
             surface,
             swapchain: vk::SwapchainKHR::null(),
@@ -103,7 +105,6 @@ impl Swapchain {
                     if err == vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT
                         || err == vk::Result::ERROR_OUT_OF_DATE_KHR
                         || err == vk::Result::NOT_READY
-                        || err == vk::Result::SUBOPTIMAL_KHR
                         || err == vk::Result::TIMEOUT =>
                 {
                     warn!("unable to acquire image: {err}");
@@ -159,17 +160,17 @@ impl Swapchain {
     }
 
     #[profiling::function]
-    fn destroy(&mut self) {
+    fn destroy_swapchain(device: &Device, swapchain: &mut vk::SwapchainKHR) {
         // TODO: Any cases where we need to wait for idle here?
 
-        if self.swapchain != vk::SwapchainKHR::null() {
-            let swapchain_ext = Device::expect_swapchain_ext(&self.device);
+        if *swapchain != vk::SwapchainKHR::null() {
+            let swapchain_ext = Device::expect_swapchain_ext(device);
 
             unsafe {
-                swapchain_ext.destroy_swapchain(self.swapchain, None);
+                swapchain_ext.destroy_swapchain(*swapchain, None);
             }
 
-            self.swapchain = vk::SwapchainKHR::null();
+            *swapchain = vk::SwapchainKHR::null();
         }
     }
 
@@ -214,7 +215,9 @@ impl Swapchain {
                 self.device.queues[queue_family_index][queue_index],
                 &present_info,
             ) {
-                Ok(_) => (),
+                Ok(_) => {
+                    Self::destroy_swapchain(&self.device, &mut self.old_swapchain);
+                }
                 Err(err)
                     if err == vk::Result::ERROR_DEVICE_LOST
                         || err == vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT
@@ -240,7 +243,7 @@ impl Swapchain {
 
     #[profiling::function]
     fn recreate_swapchain(&mut self) -> Result<(), DriverError> {
-        self.destroy();
+        Self::destroy_swapchain(&self.device, &mut self.old_swapchain);
 
         let (surface_capabilities, present_modes) = {
             let surface_ext = Device::expect_surface_ext(&self.device);
@@ -328,6 +331,7 @@ impl Swapchain {
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             .present_mode(present_mode)
             .clipped(true)
+            .old_swapchain(self.swapchain)
             .image_array_layers(1);
         let swapchain = unsafe { swapchain_ext.create_swapchain(&swapchain_create_info, None) }
             .map_err(|err| {
@@ -375,6 +379,7 @@ impl Swapchain {
         self.info.height = surface_height;
         self.info.width = surface_width;
         self.images = images;
+        self.old_swapchain = self.swapchain;
         self.swapchain = swapchain;
         self.suboptimal = false;
 
@@ -449,7 +454,8 @@ impl Drop for Swapchain {
             return;
         }
 
-        self.destroy();
+        Self::destroy_swapchain(&self.device, &mut self.old_swapchain);
+        Self::destroy_swapchain(&self.device, &mut self.swapchain);
     }
 }
 
