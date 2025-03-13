@@ -21,19 +21,17 @@ Also helpful to run with valgrind:
     cargo build --example fuzzer && valgrind target/debug/examples/fuzzer
 
 */
-fn main() {}
-/* NEEDS UPDATES TO LATEST CRATE CHANGES
 use {
+    clap::Parser,
     inline_spirv::inline_spirv,
-    rand::{seq::SliceRandom, thread_rng},
+    log::debug,
+    rand::{rng, seq::IndexedRandom, Rng},
     screen_13::prelude::*,
+    screen_13_window::{FrameContext, WindowBuilder, WindowError},
     std::{mem::size_of, sync::Arc},
 };
 
 type Operation = fn(&mut FrameContext, &mut HashPool);
-
-const FRAME_COUNT: usize = 100;
-const OPERATIONS_PER_FRAME: usize = 16;
 
 static OPERATIONS: &[Operation] = &[
     record_compute_array_bind,
@@ -43,37 +41,52 @@ static OPERATIONS: &[Operation] = &[
     record_graphic_load_store,
     record_graphic_msaa_depth_stencil,
     record_graphic_will_merge_subpass_input,
+    record_graphic_will_merge_common_color1,
+    record_graphic_will_merge_common_color2,
+    record_graphic_will_merge_common_depth1,
+    record_graphic_will_merge_common_depth2,
+    record_graphic_will_merge_common_depth3,
     record_graphic_wont_merge,
     record_accel_struct_builds,
     record_transfer_graphic_multipass,
 ];
 
-fn main() -> Result<(), DisplayError> {
+fn main() -> Result<(), WindowError> {
     pretty_env_logger::init();
     profile_with_puffin::init();
 
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
-    // If ray tracing is unsupported then set that to false and remove the associated operations
-    let screen_13 = EventLoop::new().debug(true).build()?;
+    let screen_13 = WindowBuilder::default().debug(true).build()?;
     let mut pool = HashPool::new(&screen_13.device);
 
     let mut frame_count = 0;
 
+    let args = Args::parse();
+
     screen_13.run(|mut frame| {
-        // We stop fuzzing after 10 frames
-        frame_count += 1;
-        if frame_count == FRAME_COUNT {
+        if frame_count == args.frame_count {
             *frame.will_exit = true;
+            return;
         }
 
-        // We fuzz a set amount of randomly selected operations per frame
-        for _ in 0..OPERATIONS_PER_FRAME {
-            OPERATIONS.choose(&mut rng).unwrap()(&mut frame, &mut pool);
-        }
+        frame_count += 1;
 
         // We are not testing the swapchain - so always clear it
-        frame.render_graph.clear_color_image(frame.swapchain_image);
+        let clear_before: bool = rng.random();
+
+        if clear_before {
+            frame.render_graph.clear_color_image(frame.swapchain_image);
+        }
+
+        for _ in 0..args.ops_per_frame {
+            let op_fn = OPERATIONS.choose(&mut rng).unwrap();
+            op_fn(&mut frame, &mut pool);
+        }
+
+        if !clear_before {
+            frame.render_graph.clear_color_image(frame.swapchain_image);
+        }
     })?;
 
     debug!("OK");
@@ -131,25 +144,24 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         buf
     };
 
-    let blas_geometry_info = AccelerationStructureGeometryInfo {
-        ty: vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-        geometries: vec![AccelerationStructureGeometry {
+    let blas_geometry_info = AccelerationStructureGeometryInfo::blas([(
+        AccelerationStructureGeometry {
             max_primitive_count: 1,
             flags: vk::GeometryFlagsKHR::OPAQUE,
             geometry: AccelerationStructureGeometryData::Triangles {
-                index_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&index_buf)),
+                index_addr: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&index_buf)),
                 index_type: vk::IndexType::UINT16,
                 max_vertex: 3,
-                transform_data: None,
-                vertex_data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
+                transform_addr: None,
+                vertex_addr: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(
                     &vertex_buf,
                 )),
                 vertex_format: vk::Format::R32G32B32_SFLOAT,
                 vertex_stride: 12,
             },
-        }],
-    };
+        },
+        vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(1),
+    )]);
     let blas_size = AccelerationStructure::size_of(frame.device, &blas_geometry_info);
     let blas_info = AccelerationStructureInfo::blas(blas_size.create_size);
 
@@ -218,18 +230,17 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     }
 
     // Lease and bind a single top-level acceleration structure
-    let tlas_geometry_info = AccelerationStructureGeometryInfo {
-        ty: vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-        flags: vk::BuildAccelerationStructureFlagsKHR::empty(),
-        geometries: vec![AccelerationStructureGeometry {
+    let tlas_geometry_info = AccelerationStructureGeometryInfo::tlas([(
+        AccelerationStructureGeometry {
             max_primitive_count: 1,
             flags: vk::GeometryFlagsKHR::OPAQUE,
             geometry: AccelerationStructureGeometryData::Instances {
                 array_of_pointers: false,
-                data: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&instance_buf)),
+                addr: DeviceOrHostAddress::DeviceAddress(Buffer::device_address(&instance_buf)),
             },
-        }],
-    };
+        },
+        vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(1),
+    )]);
     let instance_buf = frame.render_graph.bind_node(instance_buf);
     let tlas_size = AccelerationStructure::size_of(frame.device, &tlas_geometry_info);
     let tlas = pool
@@ -270,19 +281,10 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
         .map(|(_, blas_node)| *blas_node)
         .collect::<Vec<_>>();
 
-    let mut pass = pass.record_acceleration(move |accel, _| {
+    let mut pass = pass.record_acceleration(move |accel, bindings| {
         for (scratch_buf, blas_node) in blas_nodes {
-            accel.build_structure(
-                blas_node,
-                scratch_buf,
-                &blas_geometry_info,
-                &[vk::AccelerationStructureBuildRangeInfoKHR {
-                    first_vertex: 0,
-                    primitive_count: 1,
-                    primitive_offset: 0,
-                    transform_offset: 0,
-                }],
-            );
+            let scratch_data = Buffer::device_address(&bindings[scratch_buf]);
+            accel.build_structure(&blas_geometry_info, blas_node, scratch_data);
         }
     });
 
@@ -297,18 +299,9 @@ fn record_accel_struct_builds(frame: &mut FrameContext, pool: &mut HashPool) {
     );
     pass.access_node_mut(tlas_node, AccessType::AccelerationStructureBuildWrite);
 
-    pass.record_acceleration(move |accel, _| {
-        accel.build_structure(
-            tlas_node,
-            tlas_scratch_buf,
-            &tlas_geometry_info,
-            &[vk::AccelerationStructureBuildRangeInfoKHR {
-                first_vertex: 0,
-                primitive_count: 1,
-                primitive_offset: 0,
-                transform_offset: 0,
-            }],
-        );
+    pass.record_acceleration(move |accel, bindings| {
+        let scratch_data = Buffer::device_address(&bindings[tlas_scratch_buf]);
+        accel.build_structure(&tlas_geometry_info, tlas_node, scratch_data);
     });
 }
 
@@ -813,6 +806,438 @@ fn record_graphic_msaa_depth_stencil(frame: &mut FrameContext, pool: &mut HashPo
         });
 }
 
+fn record_graphic_will_merge_common_color1(frame: &mut FrameContext, pool: &mut HashPool) {
+    let image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    // Pass "a" stores color0 which "b" compatibly loads; so these two will get merged
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color0;
+                void main() {
+                    color0 = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_color(0, image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(&graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color0;
+                void main() {
+                    color0 = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .load_color(0, image)
+        .store_color(0, image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_common_color2(frame: &mut FrameContext, pool: &mut HashPool) {
+    let image_0 = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+    let image_1 = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color0;
+                void main() {
+                    color0 = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_color(0, image_0)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(&graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color0;
+                layout(location = 1) out vec4 color1;
+                void main() {
+                    color0 = vec4(0);
+                    color1 = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .load_color(0, image_0)
+        .store_color(0, image_0)
+        .store_color(1, image_1)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("c")
+        .bind_pipeline(&graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+            #version 460 core
+            void main() { }
+            "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+            #version 460 core
+            layout(location = 0) out vec4 color0;
+            void main() {
+                color0 = vec4(0);
+            }
+            "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .clear_color(0, image_0)
+        .store_color(0, image_0)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_common_depth1(frame: &mut FrameContext, pool: &mut HashPool) {
+    let color_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+    let depth_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::D32_SFLOAT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    // Pass "a" stores color0+depth which "b" compatibly loads; so these two will get merged
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color_out;
+                void main() {
+                    color_out = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_color(0, color_image)
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() {
+                    gl_FragDepth = 0.0;
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .load_depth_stencil(depth_image)
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_common_depth2(frame: &mut FrameContext, pool: &mut HashPool) {
+    let color_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageUsageFlags::COLOR_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+    let depth_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::D32_SFLOAT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    // Pass "a" stores color0+depth which "b" compatibly loads; so these two will get merged
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() {
+                    gl_FragDepth = 0.0;
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                layout(location = 0) out vec4 color_out;
+                void main() {
+                    color_out = vec4(0);
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_color(0, color_image)
+        .load_depth_stencil(depth_image)
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
+fn record_graphic_will_merge_common_depth3(frame: &mut FrameContext, pool: &mut HashPool) {
+    let depth_image = frame.render_graph.bind_node(
+        pool.lease(ImageInfo::image_2d(
+            256,
+            256,
+            vk::Format::D32_SFLOAT,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        ))
+        .unwrap(),
+    );
+
+    frame
+        .render_graph
+        .begin_pass("a")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() {
+                    gl_FragDepth = 0.0;
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+    frame
+        .render_graph
+        .begin_pass("b")
+        .bind_pipeline(graphic_vert_frag_pipeline(
+            frame.device,
+            GraphicPipelineInfo::default(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() { }
+                "#,
+                vert
+            )
+            .as_slice(),
+            inline_spirv!(
+                r#"
+                #version 460 core
+                void main() {
+                    gl_FragDepth = 0.0;
+                }
+                "#,
+                frag
+            )
+            .as_slice(),
+        ))
+        .load_depth_stencil(depth_image)
+        .store_depth_stencil(depth_image)
+        .record_subpass(|subpass, _| {
+            subpass.draw(1, 1, 0, 0);
+        });
+}
+
 fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, pool: &mut HashPool) {
     let vertex = inline_spirv!(
         r#"
@@ -873,7 +1298,7 @@ fn record_graphic_will_merge_subpass_input(frame: &mut FrameContext, pool: &mut 
         .unwrap(),
     );
 
-    // Pass "a" stores color 0 which "b" compatibly inputs "image"; so these two will get merged
+    // Pass "a" stores color 0 which "b" compatibly inputs; so these two will get merged
     frame
         .render_graph
         .begin_pass("a")
@@ -1096,4 +1521,14 @@ fn graphic_vert_frag_pipeline(
         )
     })
 }
-*/
+
+#[derive(Parser)]
+struct Args {
+    /// Count of fuzzing frames
+    #[arg(long, default_value_t = 100)]
+    frame_count: usize,
+
+    /// Count of operations run per fuzzing frame
+    #[arg(long, default_value_t = 16)]
+    ops_per_frame: usize,
+}
