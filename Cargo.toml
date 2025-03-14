@@ -25,7 +25,7 @@ ash-window = "0.13"
 derive_builder = "0.20"
 gpu-allocator = "0.27"
 log = "0.4"
-ordered-float = "4.2"
+ordered-float = "5.0"
 parking_lot = { version = "0.12", optional = true }
 paste = "1.0"
 profiling = "1.0"
@@ -39,9 +39,9 @@ ash-molten = "0.20"
 [dev-dependencies]
 anyhow = "1.0"
 bmfont = { version = "0.3", default-features = false }
-bytemuck = "1.16"
+bytemuck = "1.22"
 clap = { version = "4.5", features = ["derive"] }
-glam = { version = "0.28", features = ["bytemuck"] }
+glam = { version = "0.30", features = ["bytemuck"] }
 half = { version = "2.4", features = ["bytemuck"] }
 hassle-rs = "0.11"
 image = "0.25"
