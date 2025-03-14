@@ -151,7 +151,7 @@ pub fn wait_events(
     unsafe {
         device.cmd_wait_events(
             command_buffer,
-            &events,
+            events,
             src_stage_mask,
             dst_stage_mask,
             &vk_memory_barriers,

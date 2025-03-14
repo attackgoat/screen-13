@@ -1,7 +1,7 @@
 //! Acceleration structure resource types
 
 use {
-    super::{Buffer, BufferInfo, DriverError, device::Device},
+    super::{Buffer, BufferInfo, DriverError, device::Device, vk_sync::AccessType},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::warn,
@@ -12,7 +12,6 @@ use {
         sync::Arc,
         thread::panicking,
     },
-    vk_sync::AccessType,
 };
 
 #[cfg(feature = "parking_lot")]

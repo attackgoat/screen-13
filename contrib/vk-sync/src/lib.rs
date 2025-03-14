@@ -1,3 +1,4 @@
+/*
 //! In an effort to make Vulkan synchronization more accessible, this library
 //! provides a simplification of core synchronization mechanisms such as
 //! pipeline barriers and events.
@@ -12,15 +13,17 @@
 //!
 //! Use of other synchronization mechanisms such as semaphores, fences and render
 //! passes are not addressed in this library at present.
+*/
 
 use ash::vk;
 
 pub mod cmd;
 
 /// Defines all potential resource usages
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub enum AccessType {
     /// No access. Useful primarily for initialization
+    #[default]
     Nothing,
 
     /// Command buffer read operation as defined by `NVX_device_generated_commands`
@@ -199,23 +202,18 @@ pub enum AccessType {
     /// Read as an acceleration structure during acceleration structure building (e.g. a BLAS when building a TLAS)
     AccelerationStructureBuildRead,
 
-    // Written as a buffer during acceleration structure building (e.g. a staging buffer)
+    /// Written as a buffer during acceleration structure building (e.g. a staging buffer)
     AccelerationStructureBufferWrite,
-}
-
-impl Default for AccessType {
-    fn default() -> Self {
-        AccessType::Nothing
-    }
 }
 
 /// Defines a handful of layout options for images.
 /// Rather than a list of all possible image layouts, this reduced list is
 /// correlated with the access types to map to the correct Vulkan layouts.
 /// `Optimal` is usually preferred.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub enum ImageLayout {
     /// Choose the most optimal layout for each usage. Performs layout transitions as appropriate for the access.
+    #[default]
     Optimal,
 
     /// Layout accessible by all Vulkan access types on a device - no layout transitions except for presentation
@@ -225,12 +223,6 @@ pub enum ImageLayout {
     /// Requires `VK_KHR_shared_presentable_image` to be enabled, and this can only be used for shared presentable
     /// images (i.e. single-buffered swap chains).
     GeneralAndPresentation,
-}
-
-impl Default for ImageLayout {
-    fn default() -> Self {
-        ImageLayout::Optimal
-    }
 }
 
 /// Global barriers define a set of accesses on multiple resources at once.
@@ -834,25 +826,65 @@ pub(crate) fn get_access_info(access_type: AccessType) -> AccessInfo {
 
 pub(crate) fn is_write_access(access_type: AccessType) -> bool {
     match access_type {
-        AccessType::CommandBufferWriteNVX => true,
-        AccessType::VertexShaderWrite => true,
-        AccessType::TessellationControlShaderWrite => true,
-        AccessType::TessellationEvaluationShaderWrite => true,
-        AccessType::GeometryShaderWrite => true,
-        AccessType::FragmentShaderWrite => true,
-        AccessType::ColorAttachmentWrite => true,
-        AccessType::DepthStencilAttachmentWrite => true,
-        AccessType::DepthAttachmentWriteStencilReadOnly => true,
-        AccessType::StencilAttachmentWriteDepthReadOnly => true,
-        AccessType::ComputeShaderWrite => true,
-        AccessType::ComputeShaderReadWrite => true,
-        AccessType::AnyShaderWrite => true,
-        AccessType::TransferWrite => true,
-        AccessType::HostWrite => true,
-        AccessType::ColorAttachmentReadWrite => true,
-        AccessType::General => true,
-        AccessType::AccelerationStructureBuildWrite => true,
-        AccessType::AccelerationStructureBufferWrite => true,
-        _ => false,
+        AccessType::CommandBufferWriteNVX
+        | AccessType::VertexShaderWrite
+        | AccessType::TessellationControlShaderWrite
+        | AccessType::TessellationEvaluationShaderWrite
+        | AccessType::GeometryShaderWrite
+        | AccessType::FragmentShaderWrite
+        | AccessType::ColorAttachmentWrite
+        | AccessType::DepthStencilAttachmentReadWrite
+        | AccessType::DepthStencilAttachmentWrite
+        | AccessType::DepthAttachmentWriteStencilReadOnly
+        | AccessType::StencilAttachmentWriteDepthReadOnly
+        | AccessType::ComputeShaderReadWrite
+        | AccessType::ComputeShaderWrite
+        | AccessType::AnyShaderWrite
+        | AccessType::TransferWrite
+        | AccessType::HostWrite
+        | AccessType::ColorAttachmentReadWrite
+        | AccessType::General
+        | AccessType::AccelerationStructureBufferWrite
+        | AccessType::AccelerationStructureBuildWrite => true,
+        AccessType::Nothing
+        | AccessType::CommandBufferReadNVX
+        | AccessType::IndirectBuffer
+        | AccessType::IndexBuffer
+        | AccessType::VertexBuffer
+        | AccessType::VertexShaderReadUniformBuffer
+        | AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer
+        | AccessType::VertexShaderReadOther
+        | AccessType::TessellationControlShaderReadUniformBuffer
+        | AccessType::TessellationControlShaderReadSampledImageOrUniformTexelBuffer
+        | AccessType::TessellationControlShaderReadOther
+        | AccessType::TessellationEvaluationShaderReadUniformBuffer
+        | AccessType::TessellationEvaluationShaderReadSampledImageOrUniformTexelBuffer
+        | AccessType::TessellationEvaluationShaderReadOther
+        | AccessType::GeometryShaderReadUniformBuffer
+        | AccessType::GeometryShaderReadSampledImageOrUniformTexelBuffer
+        | AccessType::GeometryShaderReadOther
+        | AccessType::FragmentShaderReadUniformBuffer
+        | AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer
+        | AccessType::FragmentShaderReadColorInputAttachment
+        | AccessType::FragmentShaderReadDepthStencilInputAttachment
+        | AccessType::FragmentShaderReadOther
+        | AccessType::ColorAttachmentRead
+        | AccessType::DepthStencilAttachmentRead
+        | AccessType::ComputeShaderReadUniformBuffer
+        | AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer
+        | AccessType::ComputeShaderReadOther
+        | AccessType::AnyShaderReadUniformBuffer
+        | AccessType::AnyShaderReadUniformBufferOrVertexBuffer
+        | AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
+        | AccessType::AnyShaderReadOther
+        | AccessType::TransferRead
+        | AccessType::HostRead
+        | AccessType::Present
+        | AccessType::RayTracingShaderReadSampledImageOrUniformTexelBuffer
+        | AccessType::RayTracingShaderReadColorInputAttachment
+        | AccessType::RayTracingShaderReadDepthStencilInputAttachment
+        | AccessType::RayTracingShaderReadAccelerationStructure
+        | AccessType::RayTracingShaderReadOther
+        | AccessType::AccelerationStructureBuildRead => false,
     }
 }

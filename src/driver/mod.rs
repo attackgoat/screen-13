@@ -44,6 +44,12 @@ mod descriptor_set;
 mod descriptor_set_layout;
 mod instance;
 
+// HACK: Custom vk-sync until a fork is published or PRs get merged
+#[allow(unused)]
+pub(crate) mod vk_sync {
+    include!("vk_sync/lib.rs");
+}
+
 pub use {
     self::{cmd_buf::CommandBuffer, instance::Instance},
     ash::{self},
