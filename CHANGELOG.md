@@ -5,12 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.12.0] - 2025-03-13
+
+### Added
+
+- Automatic `vk::PipelineCache` for compute, graphic and ray-trace pipelines
+- `Acceleration::build_structures()` (and update/indirect variant commands)
+- `SampleCount::is_single()` and `is_multiple()` helper methods
+- `mip_compute.rs` and `mip_graphic.rs` examples of typical mip-map usage
 
 ### Changed
 
+- Use Rust 2024 edition
 - Updated `ash` to v0.38
 - Updated `winit` to v0.30 (_and moved related functionality to new `screen-13-window` crate_)
+- Updated `ordered-float` to v5.0
+- `ResolverPool` trait now requires `Send`
+- `screen_13_egui` allows creation using `raw_window_traits` instead of requiring an `EventLoop`
+- `vk-sync` brought into source tree until an updated fork is created or existing PRs/fixes merged
+
+### Fixed
+
+- Handling of `u8` and `u16` values used as push constants
+- Framebuffer attachments generated from certain valid configurations
+- Resolving MSAA depth attachments
+- Device feature detection issue which caused a validation layer error
+- Performance during resize and overall correctness of swapchain handling
+- Multiple issues related to subresource handling, extraneous pipeline barriers and render pass
+  merge logic
 
 ### Removed
 
@@ -554,7 +576,7 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
   platforms and require no bare-metal graphics API knowledge
 - "Hello, world!" example using a bitmapped font
 
-[Unreleased]: https://github.com/attackgoat/screen-13/compare/v0.11.2...HEAD
+[Unreleased]: https://github.com/attackgoat/screen-13/compare/v0.12.0...HEAD
 [0.1.0]: https://crates.io/crates/screen-13/0.1.0
 [0.2.0]: https://crates.io/crates/screen-13/0.2.0
 [0.3.0]: https://crates.io/crates/screen-13/0.3.0
@@ -585,3 +607,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.11.2]: https://crates.io/crates/screen-13/0.11.2
 [0.11.3]: https://crates.io/crates/screen-13/0.11.3
 [0.11.4]: https://crates.io/crates/screen-13/0.11.4
+[0.12.0]: https://crates.io/crates/screen-13/0.12.0
