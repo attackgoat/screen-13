@@ -12,9 +12,9 @@ use {
         collections::VecDeque,
         io::Cursor,
         sync::{
+            Arc,
             atomic::{AtomicBool, Ordering},
             mpsc::channel,
-            Arc,
         },
         thread::{available_parallelism, sleep, spawn},
         time::{Duration, Instant},

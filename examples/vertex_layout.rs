@@ -1,7 +1,7 @@
 mod profile_with_puffin;
 
 use {
-    bytemuck::{cast_slice, Pod, Zeroable},
+    bytemuck::{Pod, Zeroable, cast_slice},
     clap::Parser,
     half::f16,
     inline_spirv::inline_spirv,

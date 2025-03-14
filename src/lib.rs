@@ -331,6 +331,7 @@ pub mod prelude {
     pub use super::{
         display::{Display, DisplayError, DisplayInfo, DisplayInfoBuilder, ResolverPool},
         driver::{
+            AccessType, CommandBuffer, DriverError, Instance,
             accel_struct::{
                 AccelerationStructure, AccelerationStructureGeometry,
                 AccelerationStructureGeometryData, AccelerationStructureGeometryInfo,
@@ -368,23 +369,22 @@ pub mod prelude {
             swapchain::{
                 Swapchain, SwapchainError, SwapchainImage, SwapchainInfo, SwapchainInfoBuilder,
             },
-            AccessType, CommandBuffer, DriverError, Instance,
         },
         graph::{
+            Bind, ClearColorValue, RenderGraph, Unbind,
             node::{
                 AccelerationStructureLeaseNode, AccelerationStructureNode,
                 AnyAccelerationStructureNode, AnyBufferNode, AnyImageNode, BufferLeaseNode,
                 BufferNode, ImageLeaseNode, ImageNode, SwapchainImageNode,
             },
             pass_ref::{PassRef, PipelinePassRef},
-            Bind, ClearColorValue, RenderGraph, Unbind,
         },
         pool::{
+            Lease, Pool, PoolInfo, PoolInfoBuilder,
             alias::{Alias, AliasPool},
             fifo::FifoPool,
             hash::HashPool,
             lazy::LazyPool,
-            Lease, Pool, PoolInfo, PoolInfoBuilder,
         },
     };
 }

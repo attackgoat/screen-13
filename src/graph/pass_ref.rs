@@ -18,8 +18,8 @@ use {
         device::Device,
         graphic::{DepthStencilMode, GraphicPipeline},
         image::{
-            image_subresource_range_contains, image_subresource_range_intersects, Image,
-            ImageViewInfo,
+            Image, ImageViewInfo, image_subresource_range_contains,
+            image_subresource_range_intersects,
         },
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
@@ -1493,9 +1493,7 @@ impl Compute<'_> {
             if end > start {
                 trace!(
                     "      push constants {:?} {}..{}",
-                    push_const.stage_flags,
-                    start,
-                    end
+                    push_const.stage_flags, start, end
                 );
 
                 unsafe {
@@ -2217,9 +2215,7 @@ impl Draw<'_> {
             if end > start {
                 trace!(
                     "      push constants {:?} {}..{}",
-                    push_const.stage_flags,
-                    start,
-                    end
+                    push_const.stage_flags, start, end
                 );
 
                 unsafe {
@@ -3577,9 +3573,11 @@ impl PipelinePassRef<'_, GraphicPipeline> {
         {
             AccessType::DepthAttachmentWriteStencilReadOnly
         } else {
-            debug_assert!(image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::STENCIL));
+            debug_assert!(
+                image_view_info
+                    .aspect_mask
+                    .contains(vk::ImageAspectFlags::STENCIL)
+            );
 
             AccessType::StencilAttachmentWriteDepthReadOnly
         };
@@ -4195,9 +4193,11 @@ impl PipelinePassRef<'_, GraphicPipeline> {
         {
             AccessType::DepthAttachmentWriteStencilReadOnly
         } else {
-            debug_assert!(image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::STENCIL));
+            debug_assert!(
+                image_view_info
+                    .aspect_mask
+                    .contains(vk::ImageAspectFlags::STENCIL)
+            );
 
             AccessType::StencilAttachmentWriteDepthReadOnly
         };
@@ -4545,9 +4545,11 @@ impl PipelinePassRef<'_, GraphicPipeline> {
         {
             AccessType::DepthAttachmentWriteStencilReadOnly
         } else {
-            debug_assert!(image_view_info
-                .aspect_mask
-                .contains(vk::ImageAspectFlags::STENCIL));
+            debug_assert!(
+                image_view_info
+                    .aspect_mask
+                    .contains(vk::ImageAspectFlags::STENCIL)
+            );
 
             AccessType::StencilAttachmentWriteDepthReadOnly
         };
@@ -4864,9 +4866,7 @@ impl RayTrace<'_> {
             if end > start {
                 trace!(
                     "      push constants {:?} {}..{}",
-                    push_const.stage_flags,
-                    start,
-                    end
+                    push_const.stage_flags, start, end
                 );
 
                 unsafe {

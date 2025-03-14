@@ -1,16 +1,16 @@
 //! Image resource types
 
 use {
-    super::{device::Device, format_aspect_mask, DriverError},
+    super::{DriverError, device::Device, format_aspect_mask},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
-        vulkan::{Allocation, AllocationCreateDesc, AllocationScheme},
         MemoryLocation,
+        vulkan::{Allocation, AllocationCreateDesc, AllocationScheme},
     },
     log::{trace, warn},
     std::{
-        collections::{hash_map::Entry, HashMap},
+        collections::{HashMap, hash_map::Entry},
         fmt::{Debug, Formatter},
         mem::{replace, take},
         ops::{Deref, DerefMut},

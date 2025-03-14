@@ -1,11 +1,11 @@
 //! Render pass related types.
 
 use {
-    super::{device::Device, DepthStencilMode, DriverError, GraphicPipeline, SampleCount},
+    super::{DepthStencilMode, DriverError, GraphicPipeline, SampleCount, device::Device},
     ash::vk,
     log::{trace, warn},
     std::{
-        collections::{hash_map::Entry, HashMap},
+        collections::{HashMap, hash_map::Entry},
         ops::Deref,
         sync::Arc,
         thread::panicking,

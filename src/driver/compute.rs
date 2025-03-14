@@ -2,9 +2,9 @@
 
 use {
     super::{
-        device::Device,
-        shader::{align_spriv, DescriptorBindingMap, PipelineDescriptorInfo, Shader},
         DriverError,
+        device::Device,
+        shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader, align_spriv},
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},

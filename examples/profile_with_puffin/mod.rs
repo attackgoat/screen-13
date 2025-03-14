@@ -12,7 +12,7 @@
 
 #[cfg(feature = "profile-with-puffin")]
 use {
-    log::{info, log_enabled, Level::Info},
+    log::{Level::Info, info, log_enabled},
     std::mem::ManuallyDrop,
 };
 

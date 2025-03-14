@@ -1,7 +1,7 @@
 //! Native platform window surface types.
 
 use {
-    super::{device::Device, DriverError, Instance},
+    super::{DriverError, Instance, device::Device},
     ash::vk,
     ash_window::create_surface,
     log::warn,

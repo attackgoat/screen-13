@@ -2,9 +2,9 @@
 
 use {
     super::{
+        DriverError, Surface,
         device::Device,
         image::{Image, ImageInfo},
-        DriverError, Surface,
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},

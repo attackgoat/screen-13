@@ -1,14 +1,14 @@
 //! Pool which leases by looking for compatibile information before creating new resources.
 
 use {
-    super::{lease_command_buffer, Cache, Lease, Pool, PoolInfo},
+    super::{Cache, Lease, Pool, PoolInfo, lease_command_buffer},
     crate::driver::{
+        CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
+        RenderPass, RenderPassInfo,
         accel_struct::{AccelerationStructure, AccelerationStructureInfo},
         buffer::{Buffer, BufferInfo},
         device::Device,
         image::{Image, ImageInfo, ImageType, SampleCount},
-        CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
-        RenderPass, RenderPassInfo,
     },
     ash::vk,
     log::debug,

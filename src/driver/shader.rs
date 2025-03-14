@@ -1,16 +1,16 @@
 //! Shader resource types
 
 use {
-    super::{device::Device, DescriptorSetLayout, DriverError, VertexInputState},
+    super::{DescriptorSetLayout, DriverError, VertexInputState, device::Device},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::{debug, error, trace, warn},
     ordered_float::OrderedFloat,
     spirq::{
+        ReflectConfig,
         entry_point::EntryPoint,
         ty::{DescriptorType, ScalarType, SpirvType, Type},
         var::Variable,
-        ReflectConfig,
     },
     std::{
         collections::{BTreeMap, HashMap},

@@ -1,8 +1,8 @@
 use {
     super::{
-        pass_ref::{PassRef, PipelinePassRef},
         AccelerationStructureLeaseNode, AccelerationStructureNode, BufferLeaseNode, BufferNode,
         ImageLeaseNode, ImageNode, RenderGraph, Resolver, SwapchainImageNode,
+        pass_ref::{PassRef, PipelinePassRef},
     },
     crate::{
         driver::{

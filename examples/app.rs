@@ -4,6 +4,7 @@ use {
     clap::Parser,
     log::error,
     screen_13::{
+        Display, DisplayError, DisplayInfo,
         driver::{
             device::{Device, DeviceInfoBuilder},
             surface::Surface,
@@ -11,7 +12,6 @@ use {
         },
         graph::RenderGraph,
         pool::hash::HashPool,
-        Display, DisplayError, DisplayInfo,
     },
     std::sync::Arc,
     winit::{

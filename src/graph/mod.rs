@@ -30,6 +30,7 @@ use {
         pass_ref::{AttachmentIndex, Bindings, Descriptor, PassRef, SubresourceAccess, ViewType},
     },
     crate::driver::{
+        DescriptorBindingMap,
         buffer::Buffer,
         compute::ComputePipeline,
         device::Device,
@@ -40,7 +41,6 @@ use {
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
         shader::PipelineDescriptorInfo,
-        DescriptorBindingMap,
     },
     ash::vk,
     std::{

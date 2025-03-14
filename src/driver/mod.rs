@@ -453,8 +453,8 @@ pub(super) const fn pipeline_stage_access_flags(
     access_type: AccessType,
 ) -> (vk::PipelineStageFlags, vk::AccessFlags) {
     use {
-        vk::{AccessFlags as access, PipelineStageFlags as stage},
         AccessType as ty,
+        vk::{AccessFlags as access, PipelineStageFlags as stage},
     };
 
     match access_type {

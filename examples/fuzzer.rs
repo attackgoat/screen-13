@@ -25,7 +25,7 @@ use {
     clap::Parser,
     inline_spirv::inline_spirv,
     log::debug,
-    rand::{rng, seq::IndexedRandom, Rng},
+    rand::{Rng, rng, seq::IndexedRandom},
     screen_13::prelude::*,
     screen_13_window::{FrameContext, WindowBuilder, WindowError},
     std::{mem::size_of, sync::Arc},

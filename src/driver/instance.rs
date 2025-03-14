@@ -1,6 +1,6 @@
 use {
-    super::{physical_device::PhysicalDevice, DriverError},
-    ash::{ext, vk, Entry},
+    super::{DriverError, physical_device::PhysicalDevice},
+    ash::{Entry, ext, vk},
     log::{debug, error, trace, warn},
     std::{
         ffi::{CStr, CString},
@@ -14,7 +14,7 @@ use {
 
 #[cfg(not(target_os = "macos"))]
 use {
-    log::{info, logger, Level, Metadata},
+    log::{Level, Metadata, info, logger},
     std::{
         env::var,
         ffi::c_void,
@@ -41,7 +41,19 @@ unsafe extern "system" fn vulkan_debug_callback(
         return vk::FALSE;
     }
 
-    let message = CStr::from_ptr(message).to_str().unwrap();
+    assert!(!message.is_null());
+
+    let mut found_null = false;
+    for i in 0..u16::MAX as _ {
+        if unsafe { *message.add(i) } == 0 {
+            found_null = true;
+            break;
+        }
+    }
+
+    assert!(found_null);
+
+    let message = unsafe { CStr::from_ptr(message) }.to_str().unwrap();
 
     if message.starts_with("Validation Warning: [ UNASSIGNED-BestPractices-pipeline-stage-flags ]")
     {

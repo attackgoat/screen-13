@@ -1,5 +1,5 @@
 use {
-    super::{device::Device, DriverError},
+    super::{DriverError, device::Device},
     ash::vk,
     log::{error, trace, warn},
     std::{fmt::Debug, ops::Deref, sync::Arc, thread::panicking},

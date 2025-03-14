@@ -1,10 +1,10 @@
 mod profile_with_puffin;
 
 use {
-    bytemuck::{bytes_of, Pod, Zeroable},
+    bytemuck::{Pod, Zeroable, bytes_of},
     clap::Parser,
     core::f32,
-    glam::{vec3, Vec4},
+    glam::{Vec4, vec3},
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     screen_13_window::{WindowBuilder, WindowError},
@@ -44,11 +44,13 @@ fn main() -> Result<(), WindowError> {
         // It is 100% certain that the swapchain supports color attachment usage, so this is shown
         // for completeness only
         // https://vulkan.gpuinfo.org/listsurfaceusageflags.php
-        assert!(frame
-            .render_graph
-            .node_info(frame.swapchain_image)
-            .usage
-            .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
+        assert!(
+            frame
+                .render_graph
+                .node_info(frame.swapchain_image)
+                .usage
+                .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+        );
 
         let image = frame.render_graph.bind_node(&image);
         let swapchain_info = frame.render_graph.node_info(frame.swapchain_image);

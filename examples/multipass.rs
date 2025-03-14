@@ -3,7 +3,7 @@ mod profile_with_puffin;
 use {
     bytemuck::{bytes_of, cast_slice},
     clap::Parser,
-    glam::{vec3, Mat4, Vec3, Vec4},
+    glam::{Mat4, Vec3, Vec4, vec3},
     inline_spirv::inline_spirv,
     screen_13::prelude::*,
     screen_13_window::WindowBuilder,

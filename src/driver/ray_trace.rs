@@ -2,11 +2,11 @@
 
 use {
     super::{
+        DriverError,
         device::Device,
         merge_push_constant_ranges,
         physical_device::RayTraceProperties,
-        shader::{align_spriv, DescriptorBindingMap, PipelineDescriptorInfo, Shader},
-        DriverError,
+        shader::{DescriptorBindingMap, PipelineDescriptorInfo, Shader, align_spriv},
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},

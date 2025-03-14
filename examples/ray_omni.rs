@@ -1,9 +1,9 @@
 mod profile_with_puffin;
 
 use {
-    bytemuck::{bytes_of, cast_slice, Pod, Zeroable},
+    bytemuck::{Pod, Zeroable, bytes_of, cast_slice},
     clap::Parser,
-    glam::{vec3, vec4, Mat4, Vec3, Vec4},
+    glam::{Mat4, Vec3, Vec4, vec3, vec4},
     inline_spirv::inline_spirv,
     log::info,
     meshopt::remap::{generate_vertex_remap, remap_index_buffer, remap_vertex_buffer},
@@ -16,7 +16,7 @@ use {
         path::{Path, PathBuf},
         sync::Arc,
     },
-    tobj::{load_obj, GPU_LOAD_OPTIONS},
+    tobj::{GPU_LOAD_OPTIONS, load_obj},
 };
 
 fn main() -> anyhow::Result<()> {

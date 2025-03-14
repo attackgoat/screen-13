@@ -192,7 +192,7 @@ macro_rules! bind {
                 }
 
                 pub(super) fn [<as_ $name:snake _mut>](&mut self) -> Option<(&mut Arc<$name>, &mut bool)> {
-                    if let Self::$name(ref mut binding, ref mut is_bound) = self {
+                    if let Self::$name(binding, is_bound) = self {
                         Some((binding, is_bound))
                     } else {
                         None
@@ -271,7 +271,7 @@ macro_rules! bind_lease {
                 }
 
                 pub(super) fn [<as_ $name:snake _lease_mut>](&mut self) -> Option<(&Arc<Lease<$name>>, &mut bool)> {
-                    if let Self::[<$name Lease>](ref mut binding, ref mut is_bound) = self {
+                    if let Self::[<$name Lease>](binding, is_bound) = self {
                         Some((binding, is_bound))
                     } else {
                         None

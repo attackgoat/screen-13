@@ -2,17 +2,17 @@
 
 use {
     super::{
+        DriverError,
         device::Device,
         image::SampleCount,
         merge_push_constant_ranges,
         shader::{
-            align_spriv, DescriptorBindingMap, PipelineDescriptorInfo, Shader, SpecializationInfo,
+            DescriptorBindingMap, PipelineDescriptorInfo, Shader, SpecializationInfo, align_spriv,
         },
-        DriverError,
     },
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
-    log::{log_enabled, trace, warn, Level::Trace},
+    log::{Level::Trace, log_enabled, trace, warn},
     ordered_float::OrderedFloat,
     std::{collections::HashSet, ffi::CString, sync::Arc, thread::panicking},
 };

@@ -1,12 +1,12 @@
 //! Buffer resource types
 
 use {
-    super::{device::Device, DriverError},
+    super::{DriverError, device::Device},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
-        vulkan::{Allocation, AllocationCreateDesc, AllocationScheme},
         MemoryLocation,
+        vulkan::{Allocation, AllocationCreateDesc, AllocationScheme},
     },
     log::trace,
     log::warn,
@@ -330,10 +330,11 @@ impl Buffer {
     /// ```
     #[profiling::function]
     pub fn device_address(this: &Self) -> vk::DeviceAddress {
-        debug_assert!(this
-            .info
-            .usage
-            .contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS));
+        debug_assert!(
+            this.info
+                .usage
+                .contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+        );
 
         unsafe {
             this.device.get_buffer_device_address(
@@ -870,7 +871,7 @@ impl From<BufferSubresourceRange> for Range<vk::DeviceSize> {
 mod tests {
     use {
         super::*,
-        rand::{rngs::SmallRng, Rng, SeedableRng},
+        rand::{Rng, SeedableRng, rngs::SmallRng},
     };
 
     type Info = BufferInfo;

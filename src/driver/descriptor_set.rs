@@ -1,5 +1,5 @@
 use {
-    super::{device::Device, DescriptorSetLayout, DriverError},
+    super::{DescriptorSetLayout, DriverError, device::Device},
     ash::vk,
     log::warn,
     std::{ops::Deref, sync::Arc, thread::panicking},
@@ -171,7 +171,7 @@ impl DescriptorPool {
             this.device
                 .allocate_descriptor_sets(&create_info)
                 .map_err(|err| {
-                    use {vk::Result as vk, DriverError::*};
+                    use {DriverError::*, vk::Result as vk};
 
                     warn!("{err}");
 

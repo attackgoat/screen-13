@@ -1,7 +1,7 @@
 mod profile_with_puffin;
 
 use {
-    bytemuck::{cast_slice, NoUninit},
+    bytemuck::{NoUninit, cast_slice},
     clap::Parser,
     inline_spirv::inline_spirv,
     screen_13::prelude::*,

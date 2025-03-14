@@ -1,13 +1,13 @@
 //! Logical device resource types
 
 use {
-    super::{physical_device::PhysicalDevice, DriverError, Instance},
+    super::{DriverError, Instance, physical_device::PhysicalDevice},
     ash::{ext, khr, vk},
     ash_window::enumerate_required_extensions,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
-        vulkan::{Allocator, AllocatorCreateDesc},
         AllocatorDebugSettings,
+        vulkan::{Allocator, AllocatorCreateDesc},
     },
     log::{error, trace, warn},
     raw_window_handle::HasDisplayHandle,
@@ -16,7 +16,7 @@ use {
         ffi::CStr,
         fmt::{Debug, Formatter},
         iter::{empty, repeat},
-        mem::{forget, ManuallyDrop},
+        mem::{ManuallyDrop, forget},
         ops::Deref,
         thread::panicking,
         time::Instant,

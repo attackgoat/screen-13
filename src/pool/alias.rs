@@ -3,12 +3,12 @@
 use {
     super::{Lease, Pool},
     crate::driver::{
+        DriverError,
         accel_struct::{
             AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
         },
         buffer::{Buffer, BufferInfo, BufferInfoBuilder},
         image::{Image, ImageInfo, ImageInfoBuilder},
-        DriverError,
     },
     log::debug,
     std::{

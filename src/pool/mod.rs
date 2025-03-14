@@ -91,12 +91,12 @@ pub mod lazy;
 
 use {
     crate::driver::{
+        CommandBuffer, DriverError,
         accel_struct::{
             AccelerationStructure, AccelerationStructureInfo, AccelerationStructureInfoBuilder,
         },
         buffer::{Buffer, BufferInfo, BufferInfoBuilder},
         image::{Image, ImageInfo, ImageInfoBuilder},
-        CommandBuffer, DriverError,
     },
     derive_builder::{Builder, UninitializedFieldError},
     std::{

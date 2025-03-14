@@ -1,14 +1,14 @@
 use {
     super::{
         driver::{
+            CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
+            RenderPass, RenderPassInfo,
             device::Device,
             image::Image,
             image_access_layout,
             swapchain::{Swapchain, SwapchainImage, SwapchainInfo},
-            CommandBuffer, CommandBufferInfo, DescriptorPool, DescriptorPoolInfo, DriverError,
-            RenderPass, RenderPassInfo,
         },
-        graph::{node::SwapchainImageNode, RenderGraph},
+        graph::{RenderGraph, node::SwapchainImageNode},
         pool::Pool,
     },
     crate::prelude::SwapchainError,
@@ -23,7 +23,7 @@ use {
         thread::panicking,
         time::Instant,
     },
-    vk_sync::{cmd::pipeline_barrier, AccessType, ImageBarrier},
+    vk_sync::{AccessType, ImageBarrier, cmd::pipeline_barrier},
 };
 
 /// A physical display interface.

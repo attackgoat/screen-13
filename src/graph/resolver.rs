@@ -1,11 +1,15 @@
 use {
     super::{
+        Area, Attachment, Binding, Bindings, ExecutionPipeline, Node, NodeIndex, Pass, RenderGraph,
         node::SwapchainImageNode,
         pass_ref::{Subresource, SubresourceAccess},
-        Area, Attachment, Binding, Bindings, ExecutionPipeline, Node, NodeIndex, Pass, RenderGraph,
     },
     crate::{
         driver::{
+            AttachmentInfo, AttachmentRef, CommandBuffer, CommandBufferInfo, Descriptor,
+            DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet, DriverError,
+            FramebufferAttachmentImageInfo, FramebufferInfo, RenderPass, RenderPassInfo,
+            SubpassDependency, SubpassInfo,
             accel_struct::AccelerationStructure,
             buffer::Buffer,
             format_aspect_mask,
@@ -14,17 +18,13 @@ use {
             image_access_layout, initial_image_layout_access, is_read_access, is_write_access,
             pipeline_stage_access_flags,
             swapchain::SwapchainImage,
-            AttachmentInfo, AttachmentRef, CommandBuffer, CommandBufferInfo, Descriptor,
-            DescriptorInfo, DescriptorPool, DescriptorPoolInfo, DescriptorSet, DriverError,
-            FramebufferAttachmentImageInfo, FramebufferInfo, RenderPass, RenderPassInfo,
-            SubpassDependency, SubpassInfo,
         },
         pool::{Lease, Pool},
     },
     ash::vk,
     log::{
-        debug, log_enabled, trace,
         Level::{Debug, Trace},
+        debug, log_enabled, trace,
     },
     std::{
         cell::RefCell,
@@ -32,7 +32,7 @@ use {
         iter::repeat,
         ops::Range,
     },
-    vk_sync::{cmd::pipeline_barrier, AccessType, BufferBarrier, GlobalBarrier, ImageBarrier},
+    vk_sync::{AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, cmd::pipeline_barrier},
 };
 
 #[cfg(not(debug_assertions))]
@@ -2068,8 +2068,7 @@ impl Resolver {
                 // No resource attached - we use a global barrier for these
                 trace!(
                     "    global {:?}->{:?}",
-                    tls.next_accesses,
-                    tls.prev_accesses
+                    tls.next_accesses, tls.prev_accesses
                 );
 
                 Some(GlobalBarrier {

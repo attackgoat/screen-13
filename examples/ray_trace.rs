@@ -8,7 +8,7 @@ use {
     screen_13::prelude::*,
     screen_13_window::WindowBuilder,
     std::{io::BufReader, mem::size_of, sync::Arc},
-    tobj::{load_mtl_buf, load_obj_buf, GPU_LOAD_OPTIONS},
+    tobj::{GPU_LOAD_OPTIONS, load_mtl_buf, load_obj_buf},
     winit::{event::Event, keyboard::KeyCode},
     winit_input_helper::WinitInputHelper,
 };

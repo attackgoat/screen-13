@@ -1,7 +1,7 @@
 //! Acceleration structure resource types
 
 use {
-    super::{device::Device, Buffer, BufferInfo, DriverError},
+    super::{Buffer, BufferInfo, DriverError, device::Device},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     log::warn,
