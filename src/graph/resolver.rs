@@ -2300,7 +2300,7 @@ impl Resolver {
                                 )
                             {
                                 for (prev_access, range) in
-                                    Image::access(image, AccessType::Nothing, layout_range)
+                                    Image::access(image, access, layout_range)
                                 {
                                     tls.images.push(ImageResourceBarrier {
                                         image: **image,
