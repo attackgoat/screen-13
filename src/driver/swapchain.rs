@@ -443,6 +443,10 @@ impl Swapchain {
             res |= usage;
         }
 
+        // On mesa the device will return this usage flag as supported even when the extension
+        // that is needed for an image to have this flag isn't enabled
+        res &= !vk::ImageUsageFlags::ATTACHMENT_FEEDBACK_LOOP_EXT;
+
         Ok(res)
     }
 }
