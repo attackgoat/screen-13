@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2025-03-23
+
+### Fixed
+
+- Swapchain image displays nothing after Window presentaion on linux Mesa drivers
+
 ## [0.12.0] - 2025-03-13
 
 ### Added
@@ -608,3 +614,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.11.3]: https://crates.io/crates/screen-13/0.11.3
 [0.11.4]: https://crates.io/crates/screen-13/0.11.4
 [0.12.0]: https://crates.io/crates/screen-13/0.12.0
+[0.12.1]: https://crates.io/crates/screen-13/0.12.1
