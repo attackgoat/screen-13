@@ -362,12 +362,12 @@ impl RenderGraph {
                     layer_count: 1,
                 },
                 src_offsets: [
+                    vk::Offset3D { x: 0, y: 0, z: 0 },
                     vk::Offset3D {
                         x: src_info.width as _,
                         y: src_info.height as _,
                         z: src_info.depth as _,
                     },
-                    vk::Offset3D { x: 0, y: 0, z: 0 },
                 ],
                 dst_subresource: vk::ImageSubresourceLayers {
                     aspect_mask: format_aspect_mask(dst_info.fmt),
@@ -376,12 +376,12 @@ impl RenderGraph {
                     layer_count: 1,
                 },
                 dst_offsets: [
+                    vk::Offset3D { x: 0, y: 0, z: 0 },
                     vk::Offset3D {
                         x: dst_info.width as _,
                         y: dst_info.height as _,
                         z: dst_info.depth as _,
                     },
-                    vk::Offset3D { x: 0, y: 0, z: 0 },
                 ],
             },
         )
