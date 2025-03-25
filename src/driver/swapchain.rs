@@ -374,8 +374,6 @@ impl Swapchain {
             })
             .collect::<Result<Box<_>, _>>()?;
 
-        debug_assert_eq!(desired_image_count, images.len() as u32);
-
         self.info.height = surface_height;
         self.info.width = surface_width;
         self.images = images;
