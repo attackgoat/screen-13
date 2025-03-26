@@ -133,7 +133,9 @@ impl Instance {
     ) -> Result<Self, DriverError> {
         // Required to enable non-uniform descriptor indexing (bindless)
         #[cfg(target_os = "macos")]
-        set_var("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1");
+        unsafe {
+            set_var("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1");
+        }
 
         #[cfg(not(target_os = "macos"))]
         let entry = unsafe {
