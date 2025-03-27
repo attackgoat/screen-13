@@ -46,9 +46,8 @@ mod instance;
 
 // HACK: Custom vk-sync until a fork is published or PRs get merged
 #[allow(unused)]
-pub(crate) mod vk_sync {
-    include!("vk_sync/lib.rs");
-}
+#[path = "../../contrib/vk-sync/src/lib.rs"]
+pub(crate) mod vk_sync;
 
 pub use {
     self::{cmd_buf::CommandBuffer, instance::Instance},
