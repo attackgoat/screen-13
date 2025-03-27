@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2025-03-27
+
+### Fixed
+
+- Fix compilation issue on MacOS
+- Remove incorrect debug assertion for swapchain desired image count
+
+### Changed
+
+- Symbolic link to `vk-sync` now uses a path attribute (easier to build from source on Windows)
+
 ## [0.12.2] - 2025-03-24
 
 ### Fixed
@@ -622,3 +633,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.12.0]: https://crates.io/crates/screen-13/0.12.0
 [0.12.1]: https://crates.io/crates/screen-13/0.12.1
 [0.12.2]: https://crates.io/crates/screen-13/0.12.2
+[0.12.3]: https://crates.io/crates/screen-13/0.12.3
