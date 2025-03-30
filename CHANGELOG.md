@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Support for MSAA [sample rate shading](https://vulkan.gpuinfo.org/listdevicescoverage.php?feature=sampleRateShading&platform=all) (_[`GraphicPipelineInfo::min_sample_shading`](https://docs.rs/screen-13/latest/screen_13/driver/graphic/struct.GraphicPipelineInfo.html#structfield.min_sample_shading)_)
+- Initial support for MSAA [coverage](https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#fragops-covg) (_[`GraphicPipelineInfo::alpha_to_coverage`](https://docs.rs/screen-13/latest/screen_13/driver/graphic/struct.GraphicPipelineInfo.html#structfield.alpha_to_coverage)/[`GraphicPipelineInfo::alpha_to_one`](https://docs.rs/screen-13/latest/screen_13/driver/graphic/struct.GraphicPipelineInfo.html#structfield.alpha_to_one)_)
+
 ## [0.12.3] - 2025-03-27
 
 ### Fixed

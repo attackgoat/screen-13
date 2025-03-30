@@ -544,10 +544,31 @@ impl GraphicPipeline {
                     stages.push(shader_stage);
                 });
 
-            let multisample = MultisampleState {
+            let mut multisample = MultisampleState {
+                alpha_to_coverage_enable: info.alpha_to_coverage,
+                alpha_to_one_enable: info.alpha_to_one,
                 rasterization_samples: info.samples,
                 ..Default::default()
             };
+
+            if let Some(OrderedFloat(min_sample_shading)) = info.min_sample_shading {
+                #[cfg(debug_assertions)]
+                if info.samples.is_single() {
+                    // This combination of a single-sampled pipeline and minimum sample shading
+                    // does not make sense and should not be requested. In the future maybe this is
+                    // part of the MSAA value so it can't be specified.
+                    warn!("unsupported sample rate shading of single-sample pipeline");
+                }
+
+                // Callers should check this before attempting to use the feature
+                debug_assert!(
+                    device.physical_device.features_v1_0.sample_rate_shading,
+                    "unsupported sample rate shading feature"
+                );
+
+                multisample.sample_shading_enable = true;
+                multisample.min_sample_shading = min_sample_shading;
+            }
 
             let push_constants = merge_push_constant_ranges(&push_constants);
 
@@ -610,6 +631,16 @@ impl Drop for GraphicPipeline {
 )]
 #[non_exhaustive]
 pub struct GraphicPipelineInfo {
+    /// Controls whether a temporary coverage value is generated based on the alpha component of the
+    /// fragment’s first color output.
+    #[builder(default)]
+    pub alpha_to_coverage: bool,
+
+    /// Controls whether the alpha component of the fragment’s first color output is replaced with
+    /// one.
+    #[builder(default)]
+    pub alpha_to_one: bool,
+
     /// The number of descriptors to allocate for a given binding when using bindless (unbounded)
     /// syntax.
     ///
@@ -654,6 +685,10 @@ pub struct GraphicPipelineInfo {
     #[builder(default = "vk::FrontFace::COUNTER_CLOCKWISE")]
     pub front_face: vk::FrontFace,
 
+    /// Specify a fraction of the minimum number of unique samples to process for each fragment.
+    #[builder(default, setter(into, strip_option))]
+    pub min_sample_shading: Option<OrderedFloat<f32>>,
+
     /// Control polygon rasterization mode.
     ///
     /// The default value is `vk::PolygonMode::FILL`.
@@ -686,10 +721,13 @@ impl GraphicPipelineInfo {
     #[inline(always)]
     pub fn to_builder(self) -> GraphicPipelineInfoBuilder {
         GraphicPipelineInfoBuilder {
+            alpha_to_coverage: Some(self.alpha_to_coverage),
+            alpha_to_one: Some(self.alpha_to_one),
             bindless_descriptor_count: Some(self.bindless_descriptor_count),
             blend: Some(self.blend),
             cull_mode: Some(self.cull_mode),
             front_face: Some(self.front_face),
+            min_sample_shading: Some(self.min_sample_shading),
             polygon_mode: Some(self.polygon_mode),
             topology: Some(self.topology),
             samples: Some(self.samples),
@@ -700,10 +738,13 @@ impl GraphicPipelineInfo {
 impl Default for GraphicPipelineInfo {
     fn default() -> Self {
         Self {
+            alpha_to_coverage: false,
+            alpha_to_one: false,
             bindless_descriptor_count: 8192,
             blend: BlendMode::REPLACE,
             cull_mode: vk::CullModeFlags::BACK,
             front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+            min_sample_shading: None,
             polygon_mode: vk::PolygonMode::FILL,
             topology: vk::PrimitiveTopology::TRIANGLE_LIST,
             samples: SampleCount::Type1,
