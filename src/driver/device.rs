@@ -9,7 +9,7 @@ use {
         AllocatorDebugSettings,
         vulkan::{Allocator, AllocatorCreateDesc},
     },
-    log::{error, trace, warn},
+    log::{error, info, trace, warn},
     raw_window_handle::HasDisplayHandle,
     std::{
         cmp::Ordering,
@@ -203,6 +203,8 @@ impl Device {
 
             DriverError::Unsupported
         })?;
+
+        info!("created {}", physical_device.properties_v1_0.device_name);
 
         Self::load(instance, physical_device, device, display_window)
     }

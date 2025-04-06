@@ -7,7 +7,6 @@ use {
         fmt::{Debug, Formatter},
         ops::Deref,
         os::raw::c_char,
-        process::abort,
         thread::panicking,
     },
 };
@@ -18,7 +17,7 @@ use {
     std::{
         env::var,
         ffi::c_void,
-        process::id,
+        process::{abort, id},
         thread::{current, park},
     },
 };
