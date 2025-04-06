@@ -161,7 +161,9 @@ impl Swapchain {
 
     #[profiling::function]
     fn destroy_swapchain(device: &Device, swapchain: &mut vk::SwapchainKHR) {
-        // TODO: Any cases where we need to wait for idle here?
+        // wait for device to be finished with swapchain before destroying it.
+        // This avoid crashes when resizing windows
+        unsafe { device.device_wait_idle() }.unwrap();
 
         if *swapchain != vk::SwapchainKHR::null() {
             let swapchain_ext = Device::expect_swapchain_ext(device);
