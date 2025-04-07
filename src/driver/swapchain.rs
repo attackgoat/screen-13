@@ -161,11 +161,12 @@ impl Swapchain {
 
     #[profiling::function]
     fn destroy_swapchain(device: &Device, swapchain: &mut vk::SwapchainKHR) {
-        // wait for device to be finished with swapchain before destroying it.
-        // This avoid crashes when resizing windows
-        unsafe { device.device_wait_idle() }.unwrap();
-
         if *swapchain != vk::SwapchainKHR::null() {
+            // wait for device to be finished with swapchain before destroying it.
+            // This avoid crashes when resizing windows
+            #[cfg(target_os = "macos")]
+            unsafe { device.device_wait_idle() }.unwrap();
+
             let swapchain_ext = Device::expect_swapchain_ext(device);
 
             unsafe {
@@ -401,6 +402,10 @@ impl Swapchain {
         let info: SwapchainInfo = info.into();
 
         if self.info != info {
+            // attempt to reducing flickering when resizing windows on mac
+            #[cfg(target_os = "macos")]
+            unsafe { self.device.device_wait_idle() }.unwrap();
+
             self.info = info;
 
             trace!("info: {:?}", self.info);
