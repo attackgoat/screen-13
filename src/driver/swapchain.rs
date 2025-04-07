@@ -165,7 +165,9 @@ impl Swapchain {
             // wait for device to be finished with swapchain before destroying it.
             // This avoid crashes when resizing windows
             #[cfg(target_os = "macos")]
-            unsafe { device.device_wait_idle() }.unwrap();
+            if let Err(err) = unsafe { device.device_wait_idle() } {
+                warn!("device_wait_idle() failed: {err}");
+            }
 
             let swapchain_ext = Device::expect_swapchain_ext(device);
 
@@ -404,7 +406,9 @@ impl Swapchain {
         if self.info != info {
             // attempt to reducing flickering when resizing windows on mac
             #[cfg(target_os = "macos")]
-            unsafe { self.device.device_wait_idle() }.unwrap();
+            if let Err(err) = unsafe { self.device.device_wait_idle() } {
+                warn!("device_wait_idle() failed: {err}");
+            }
 
             self.info = info;
 
