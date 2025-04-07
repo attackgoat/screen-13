@@ -161,9 +161,14 @@ impl Swapchain {
 
     #[profiling::function]
     fn destroy_swapchain(device: &Device, swapchain: &mut vk::SwapchainKHR) {
-        // TODO: Any cases where we need to wait for idle here?
-
         if *swapchain != vk::SwapchainKHR::null() {
+            // wait for device to be finished with swapchain before destroying it.
+            // This avoid crashes when resizing windows
+            #[cfg(target_os = "macos")]
+            if let Err(err) = unsafe { device.device_wait_idle() } {
+                warn!("device_wait_idle() failed: {err}");
+            }
+
             let swapchain_ext = Device::expect_swapchain_ext(device);
 
             unsafe {
@@ -399,6 +404,12 @@ impl Swapchain {
         let info: SwapchainInfo = info.into();
 
         if self.info != info {
+            // attempt to reducing flickering when resizing windows on mac
+            #[cfg(target_os = "macos")]
+            if let Err(err) = unsafe { self.device.device_wait_idle() } {
+                warn!("device_wait_idle() failed: {err}");
+            }
+
             self.info = info;
 
             trace!("info: {:?}", self.info);
