@@ -32,7 +32,7 @@ use {
     std::{
         cell::RefCell,
         collections::{BTreeMap, HashMap, VecDeque},
-        iter::repeat,
+        iter::repeat_n,
         ops::Range,
     },
 };
@@ -1198,14 +1198,14 @@ impl Resolver {
             }
 
             // Set color resolves to defaults
-            subpass_info.color_resolve_attachments.extend(
-                repeat(AttachmentRef {
+            subpass_info.color_resolve_attachments.extend(repeat_n(
+                AttachmentRef {
                     attachment: vk::ATTACHMENT_UNUSED,
                     aspect_mask: vk::ImageAspectFlags::empty(),
                     layout: vk::ImageLayout::UNDEFINED,
-                })
-                .take(color_attachment_count),
-            );
+                },
+                color_attachment_count,
+            ));
 
             // Set any used color resolve attachments now
             for (dst_attachment_idx, (resolved_attachment, src_attachment_idx)) in

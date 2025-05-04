@@ -13,7 +13,7 @@ use {
     std::{
         cmp::Ordering,
         env::current_exe,
-        iter::repeat,
+        iter::repeat_n,
         mem::{size_of, size_of_val},
         sync::Arc,
         time::{Duration, Instant},
@@ -227,9 +227,9 @@ impl Animation {
         }
 
         Ok(Animation {
-            frame_joints: repeat(Mat4::IDENTITY).take(model.joints.len()).collect(),
+            frame_joints: repeat_n(Mat4::IDENTITY, model.joints.len()).collect(),
             joints,
-            local_joints: repeat(Mat4::IDENTITY).take(model.joints.len()).collect(),
+            local_joints: repeat_n(Mat4::IDENTITY, model.joints.len()).collect(),
             channels,
             time: 0,
             total_time,

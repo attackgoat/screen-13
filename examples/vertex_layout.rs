@@ -120,12 +120,12 @@ fn create_f16_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dri
     const COLOR_SIZE: u32 = 3 * size_of::<f32>() as u32;
 
     let vertex = create_vertex_shader(false).vertex_input(
-        &[vk::VertexInputBindingDescription {
+        [vk::VertexInputBindingDescription {
             binding: 0,
             stride: POSITION_SIZE + COLOR_SIZE,
             input_rate: vk::VertexInputRate::VERTEX,
         }],
-        &[
+        [
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 0,
@@ -161,12 +161,12 @@ fn create_f64_pipeline(device: &Arc<Device>) -> Result<Arc<GraphicPipeline>, Dri
     const PAD_SIZE: u32 = size_of::<u32>() as u32;
 
     let vertex = create_vertex_shader(true).vertex_input(
-        &[vk::VertexInputBindingDescription {
+        [vk::VertexInputBindingDescription {
             binding: 0,
             stride: POSITION_SIZE + COLOR_SIZE + PAD_SIZE,
             input_rate: vk::VertexInputRate::VERTEX,
         }],
-        &[
+        [
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 0,

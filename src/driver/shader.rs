@@ -9,13 +9,13 @@ use {
     spirq::{
         ReflectConfig,
         entry_point::EntryPoint,
-        ty::{DescriptorType, ScalarType, SpirvType, Type},
+        ty::{DescriptorType, ScalarType, Type, VectorType},
         var::Variable,
     },
     std::{
         collections::{BTreeMap, HashMap},
         fmt::{Debug, Formatter},
-        iter::repeat,
+        iter::repeat_n,
         mem::size_of_val,
         ops::Deref,
         sync::Arc,
@@ -248,9 +248,7 @@ impl PipelineDescriptorInfo {
             .map(|(sampler_info, &binding_count)| {
                 (
                     *sampler_info,
-                    repeat(*samplers[sampler_info])
-                        .take(binding_count as _)
-                        .collect::<Box<_>>(),
+                    repeat_n(*samplers[sampler_info], binding_count as _).collect::<Box<_>>(),
                 )
             })
             .collect::<HashMap<_, _>>();
@@ -1199,34 +1197,104 @@ impl Shader {
             return vertex_input.clone();
         }
 
-        fn scalar_format(ty: &ScalarType, byte_len: u32) -> vk::Format {
-            match ty {
-                ScalarType::Float { .. } => match byte_len {
-                    4 => vk::Format::R32_SFLOAT,
-                    8 => vk::Format::R32G32_SFLOAT,
-                    12 => vk::Format::R32G32B32_SFLOAT,
-                    16 => vk::Format::R32G32B32A32_SFLOAT,
-                    _ => unimplemented!("byte_len {byte_len}"),
+        fn scalar_format(ty: &ScalarType) -> vk::Format {
+            match *ty {
+                ScalarType::Float { bits } => match bits {
+                    u8::BITS => vk::Format::R8_SNORM,
+                    u16::BITS => vk::Format::R16_SFLOAT,
+                    u32::BITS => vk::Format::R32_SFLOAT,
+                    u64::BITS => vk::Format::R64_SFLOAT,
+                    _ => unimplemented!("{bits}-bit float"),
                 },
                 ScalarType::Integer {
-                    is_signed: true, ..
-                } => match byte_len {
-                    4 => vk::Format::R32_SINT,
-                    8 => vk::Format::R32G32_SINT,
-                    12 => vk::Format::R32G32B32_SINT,
-                    16 => vk::Format::R32G32B32A32_SINT,
-                    _ => unimplemented!("byte_len {byte_len}"),
+                    bits,
+                    is_signed: false,
+                } => match bits {
+                    u8::BITS => vk::Format::R8_UINT,
+                    u16::BITS => vk::Format::R16_UINT,
+                    u32::BITS => vk::Format::R32_UINT,
+                    u64::BITS => vk::Format::R64_UINT,
+                    _ => unimplemented!("{bits}-bit unsigned integer"),
                 },
                 ScalarType::Integer {
-                    is_signed: false, ..
-                } => match byte_len {
-                    4 => vk::Format::R32_UINT,
-                    8 => vk::Format::R32G32_UINT,
-                    12 => vk::Format::R32G32B32_UINT,
-                    16 => vk::Format::R32G32B32A32_UINT,
-                    _ => unimplemented!("byte_len {byte_len}"),
+                    bits,
+                    is_signed: true,
+                } => match bits {
+                    u8::BITS => vk::Format::R8_SINT,
+                    u16::BITS => vk::Format::R16_SINT,
+                    u32::BITS => vk::Format::R32_SINT,
+                    u64::BITS => vk::Format::R64_SINT,
+                    _ => unimplemented!("{bits}-bit signed integer"),
                 },
-                _ => unimplemented!("{:?}", ty),
+                _ => unimplemented!("{ty:?}"),
+            }
+        }
+
+        fn vector_format(ty: &VectorType) -> vk::Format {
+            match *ty {
+                VectorType {
+                    scalar_ty: ScalarType::Float { bits },
+                    nscalar,
+                } => match (bits, nscalar) {
+                    (u8::BITS, 2) => vk::Format::R8G8_SNORM,
+                    (u8::BITS, 3) => vk::Format::R8G8B8_SNORM,
+                    (u8::BITS, 4) => vk::Format::R8G8B8A8_SNORM,
+                    (u16::BITS, 2) => vk::Format::R16G16_SFLOAT,
+                    (u16::BITS, 3) => vk::Format::R16G16B16_SFLOAT,
+                    (u16::BITS, 4) => vk::Format::R16G16B16A16_SFLOAT,
+                    (u32::BITS, 2) => vk::Format::R32G32_SFLOAT,
+                    (u32::BITS, 3) => vk::Format::R32G32B32_SFLOAT,
+                    (u32::BITS, 4) => vk::Format::R32G32B32A32_SFLOAT,
+                    (u64::BITS, 2) => vk::Format::R64G64_SFLOAT,
+                    (u64::BITS, 3) => vk::Format::R64G64B64_SFLOAT,
+                    (u64::BITS, 4) => vk::Format::R64G64B64A64_SFLOAT,
+                    _ => unimplemented!("{bits}-bit vec{nscalar} float"),
+                },
+                VectorType {
+                    scalar_ty:
+                        ScalarType::Integer {
+                            bits,
+                            is_signed: false,
+                        },
+                    nscalar,
+                } => match (bits, nscalar) {
+                    (u8::BITS, 2) => vk::Format::R8G8_UINT,
+                    (u8::BITS, 3) => vk::Format::R8G8B8_UINT,
+                    (u8::BITS, 4) => vk::Format::R8G8B8A8_UINT,
+                    (u16::BITS, 2) => vk::Format::R16G16_UINT,
+                    (u16::BITS, 3) => vk::Format::R16G16B16_UINT,
+                    (u16::BITS, 4) => vk::Format::R16G16B16A16_UINT,
+                    (u32::BITS, 2) => vk::Format::R32G32_UINT,
+                    (u32::BITS, 3) => vk::Format::R32G32B32_UINT,
+                    (u32::BITS, 4) => vk::Format::R32G32B32A32_UINT,
+                    (u64::BITS, 2) => vk::Format::R64G64_UINT,
+                    (u64::BITS, 3) => vk::Format::R64G64B64_UINT,
+                    (u64::BITS, 4) => vk::Format::R64G64B64A64_UINT,
+                    _ => unimplemented!("{bits}-bit vec{nscalar} unsigned integer"),
+                },
+                VectorType {
+                    scalar_ty:
+                        ScalarType::Integer {
+                            bits,
+                            is_signed: true,
+                        },
+                    nscalar,
+                } => match (bits, nscalar) {
+                    (u8::BITS, 2) => vk::Format::R8G8_SINT,
+                    (u8::BITS, 3) => vk::Format::R8G8B8_SINT,
+                    (u8::BITS, 4) => vk::Format::R8G8B8A8_SINT,
+                    (u16::BITS, 2) => vk::Format::R16G16_SINT,
+                    (u16::BITS, 3) => vk::Format::R16G16B16_SINT,
+                    (u16::BITS, 4) => vk::Format::R16G16B16A16_SINT,
+                    (u32::BITS, 2) => vk::Format::R32G32_SINT,
+                    (u32::BITS, 3) => vk::Format::R32G32B32_SINT,
+                    (u32::BITS, 4) => vk::Format::R32G32B32A32_SINT,
+                    (u64::BITS, 2) => vk::Format::R64G64_SINT,
+                    (u64::BITS, 3) => vk::Format::R64G64B64_SINT,
+                    (u64::BITS, 4) => vk::Format::R64G64B64A64_SINT,
+                    _ => unimplemented!("{bits}-bit vec{nscalar} signed integer"),
+                },
+                _ => unimplemented!("{ty:?}"),
             }
         }
 
@@ -1269,8 +1337,8 @@ impl Shader {
                 location,
                 binding,
                 format: match ty {
-                    Type::Scalar(ty) => scalar_format(ty, ty.nbyte().unwrap_or_default() as _),
-                    Type::Vector(ty) => scalar_format(&ty.scalar_ty, byte_stride),
+                    Type::Scalar(ty) => scalar_format(ty),
+                    Type::Vector(ty) => vector_format(ty),
                     _ => unimplemented!("{:?}", ty),
                 },
                 offset: byte_stride, // Figured out below - this data is iter'd in an unknown order
@@ -1418,12 +1486,12 @@ impl ShaderBuilder {
     #[profiling::function]
     pub fn vertex_input(
         mut self,
-        bindings: &[vk::VertexInputBindingDescription],
-        attributes: &[vk::VertexInputAttributeDescription],
+        bindings: impl Into<Vec<vk::VertexInputBindingDescription>>,
+        attributes: impl Into<Vec<vk::VertexInputAttributeDescription>>,
     ) -> Self {
         self.vertex_input_state = Some(Some(VertexInputState {
-            vertex_binding_descriptions: bindings.to_vec(),
-            vertex_attribute_descriptions: attributes.to_vec(),
+            vertex_binding_descriptions: bindings.into(),
+            vertex_attribute_descriptions: attributes.into(),
         }));
         self
     }

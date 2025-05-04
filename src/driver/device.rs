@@ -15,7 +15,7 @@ use {
         cmp::Ordering,
         ffi::CStr,
         fmt::{Debug, Formatter},
-        iter::{empty, repeat},
+        iter::{empty, repeat_n},
         mem::{ManuallyDrop, forget},
         ops::Deref,
         thread::panicking,
@@ -98,16 +98,16 @@ impl Device {
             enabled_ext_names.push(ext::index_type_uint8::NAME.as_ptr());
         }
 
-        let priorities = repeat(1.0)
-            .take(
-                physical_device
-                    .queue_families
-                    .iter()
-                    .map(|family| family.queue_count)
-                    .max()
-                    .unwrap_or_default() as _,
-            )
-            .collect::<Box<_>>();
+        let priorities = repeat_n(
+            1.0,
+            physical_device
+                .queue_families
+                .iter()
+                .map(|family| family.queue_count)
+                .max()
+                .unwrap_or_default() as _,
+        )
+        .collect::<Box<_>>();
 
         let queue_infos = physical_device
             .queue_families
