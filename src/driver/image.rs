@@ -742,7 +742,12 @@ impl ImageInfo {
     /// Specifies a cube image.
     #[inline(always)]
     pub const fn cube(size: u32, fmt: vk::Format, usage: vk::ImageUsageFlags) -> ImageInfo {
-        Self::new(ImageType::Cube, size, size, 1, 1, fmt, usage)
+        let mut res = Self::new(ImageType::Cube, size, size, 1, 6, fmt, usage);
+        res.flags = vk::ImageCreateFlags::from_raw(
+            vk::ImageCreateFlags::CUBE_COMPATIBLE.as_raw() | res.flags.as_raw(),
+        );
+
+        res
     }
 
     /// Specifies a one-dimensional image.
