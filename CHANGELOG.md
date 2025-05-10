@@ -5,11 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.12.6] - 2025-05-10
 
 ## Added
 
 - Support for more automatic vertex-layout type detection in vertex shaders
+
+## Changed
+
+- Switch local fork of `vk-sync-fork` to upstream crate (at v0.5)
+
+## Fixed
+
+- `ImageInfo::cube(..)` now returns valid information (layers set to 6; auto-set CUBE flags)
 
 ## [0.12.5] - 2025-04-07
 
@@ -26,14 +34,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.12.3] - 2025-03-27
 
+### Changed
+
+- Symbolic link to `vk-sync` now uses a path attribute (easier to build from source on Windows)
+
 ### Fixed
 
 - Fix compilation issue on MacOS
 - Remove incorrect debug assertion for swapchain desired image count
-
-### Changed
-
-- Symbolic link to `vk-sync` now uses a path attribute (easier to build from source on Windows)
 
 ## [0.12.2] - 2025-03-24
 
@@ -655,3 +663,4 @@ _See [#25](https://github.com/attackgoat/screen-13/pull/25) for migration detail
 [0.12.3]: https://crates.io/crates/screen-13/0.12.3
 [0.12.4]: https://crates.io/crates/screen-13/0.12.4
 [0.12.5]: https://crates.io/crates/screen-13/0.12.5
+[0.12.6]: https://crates.io/crates/screen-13/0.12.6
