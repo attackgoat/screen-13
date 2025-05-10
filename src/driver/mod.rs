@@ -44,11 +44,6 @@ mod descriptor_set;
 mod descriptor_set_layout;
 mod instance;
 
-// HACK: Custom vk-sync until a fork is published or PRs get merged
-#[allow(unused)]
-#[path = "../../contrib/vk-sync/src/lib.rs"]
-pub(crate) mod vk_sync;
-
 pub use {
     self::{cmd_buf::CommandBuffer, instance::Instance},
     ash::{self},
@@ -329,7 +324,13 @@ pub(super) const fn is_write_access(ty: AccessType) -> bool {
         | RayTracingShaderReadDepthStencilInputAttachment
         | RayTracingShaderReadAccelerationStructure
         | RayTracingShaderReadOther
-        | AccelerationStructureBuildRead => false,
+        | AccelerationStructureBuildRead
+        | MeshShaderReadUniformBuffer
+        | MeshShaderReadSampledImageOrUniformTexelBuffer
+        | MeshShaderReadOther
+        | TaskShaderReadUniformBuffer
+        | TaskShaderReadSampledImageOrUniformTexelBuffer
+        | TaskShaderReadOther => false,
         CommandBufferWriteNVX
         | VertexShaderWrite
         | TessellationControlShaderWrite
@@ -349,7 +350,9 @@ pub(super) const fn is_write_access(ty: AccessType) -> bool {
         | General
         | AccelerationStructureBuildWrite
         | AccelerationStructureBufferWrite
-        | ComputeShaderReadWrite => true,
+        | ComputeShaderReadWrite
+        | MeshShaderWrite
+        | TaskShaderWrite => true,
     }
 }
 
@@ -639,6 +642,18 @@ pub(super) const fn pipeline_stage_access_flags(
             stage::ACCELERATION_STRUCTURE_BUILD_KHR,
             access::TRANSFER_WRITE,
         ),
+        ty::MeshShaderReadUniformBuffer => (stage::MESH_SHADER_EXT, access::SHADER_READ),
+        ty::MeshShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::MESH_SHADER_EXT, access::SHADER_READ)
+        }
+        ty::MeshShaderReadOther => (stage::MESH_SHADER_EXT, access::SHADER_READ),
+        ty::TaskShaderReadUniformBuffer => (stage::TASK_SHADER_EXT, access::SHADER_READ),
+        ty::TaskShaderReadSampledImageOrUniformTexelBuffer => {
+            (stage::TASK_SHADER_EXT, access::SHADER_READ)
+        }
+        ty::TaskShaderReadOther => (stage::TASK_SHADER_EXT, access::SHADER_READ),
+        ty::MeshShaderWrite => (stage::MESH_SHADER_EXT, access::SHADER_WRITE),
+        ty::TaskShaderWrite => (stage::TASK_SHADER_EXT, access::SHADER_WRITE),
     }
 }
 

@@ -23,7 +23,6 @@ use {
         },
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
-        vk_sync::AccessType,
     },
     ash::vk,
     log::trace,
@@ -33,6 +32,7 @@ use {
         ops::{Index, Range},
         sync::Arc,
     },
+    vk_sync::AccessType,
 };
 
 /// Alias for the index of a framebuffer attachment.

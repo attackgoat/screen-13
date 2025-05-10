@@ -18,9 +18,6 @@ use {
             image_access_layout, initial_image_layout_access, is_read_access, is_write_access,
             pipeline_stage_access_flags,
             swapchain::SwapchainImage,
-            vk_sync::{
-                AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, cmd::pipeline_barrier,
-            },
         },
         pool::{Lease, Pool},
     },
@@ -35,6 +32,7 @@ use {
         iter::repeat_n,
         ops::Range,
     },
+    vk_sync::{AccessType, BufferBarrier, GlobalBarrier, ImageBarrier, cmd::pipeline_barrier},
 };
 
 #[cfg(not(debug_assertions))]

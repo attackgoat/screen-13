@@ -41,7 +41,6 @@ use {
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
         shader::PipelineDescriptorInfo,
-        vk_sync::AccessType,
     },
     ash::vk,
     std::{
@@ -51,6 +50,7 @@ use {
         ops::Range,
         sync::Arc,
     },
+    vk_sync::AccessType,
 };
 
 type ExecFn = Box<dyn FnOnce(&Device, vk::CommandBuffer, Bindings<'_>) + Send>;

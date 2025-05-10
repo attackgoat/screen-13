@@ -1,7 +1,7 @@
 //! Buffer resource types
 
 use {
-    super::{DriverError, device::Device, vk_sync::AccessType},
+    super::{DriverError, device::Device},
     ash::vk,
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
@@ -17,6 +17,7 @@ use {
         sync::Arc,
         thread::panicking,
     },
+    vk_sync::AccessType,
 };
 
 #[cfg(feature = "parking_lot")]
