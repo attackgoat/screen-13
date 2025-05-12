@@ -301,11 +301,7 @@ impl Swapchain {
             return Err(DriverError::Unsupported);
         }
 
-        let present_mode_preference = if self.info.sync_display {
-            vec![vk::PresentModeKHR::FIFO_RELAXED, vk::PresentModeKHR::FIFO]
-        } else {
-            vec![vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
-        };
+        let present_mode_preference = self.info.present_mode.vk_present_mode();
         let present_mode = present_mode_preference
             .into_iter()
             .find(|mode| present_modes.contains(mode))
@@ -517,6 +513,81 @@ impl Deref for SwapchainImage {
     }
 }
 
+/// Timing and queueing with which frames are actually displayed to the user.
+/// If the selected mode is unavailable the most similar available fallback will be selected.
+#[derive(Default, Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum PresentMode {
+    /// Presentation frames are kept in a First-In-First-Out queue approximately 3 frames
+    /// long. Every vertical blanking period, the presentation engine will pop a frame
+    /// off the queue to display. If there is no frame to display, it will present the same
+    /// frame again until the next vblank.
+    ///
+    /// When a present command is executed on the GPU, the presented image is added on the queue.
+    ///
+    /// * **Tearing:** No tearing will be observed.
+    /// * **Also known as**: "Vsync On"
+    ///
+    /// If unsupported, falls back to FifoRelaxed.
+    Fifo = 0,
+
+    /// Presentation frames are kept in a First-In-First-Out queue approximately 3 frames
+    /// long. Every vertical blanking period, the presentation engine will pop a frame
+    /// off the queue to display. If there is no frame to display, it will present the
+    /// same frame until there is a frame in the queue. The moment there is a frame in the
+    /// queue, it will immediately pop the frame off the queue.
+    ///
+    /// When a present command is executed on the GPU, the presented image is added on the queue.
+    ///
+    /// * **Tearing**:
+    ///   Tearing will be observed if frames last more than one vblank as the front buffer.
+    /// * **Also known as**: "Adaptive Vsync"
+    ///
+    /// If unsupported, falls back to Fifo.
+    #[default]
+    FifoRelaxed = 1,
+
+    /// Presentation frames are not queued at all. The moment a present command
+    /// is executed on the GPU, the presented image is swapped onto the front buffer
+    /// immediately.
+    ///
+    /// * **Tearing**: Tearing can be observed.
+    /// * **Also known as**: "Vsync Off"
+    ///
+    /// If unsupported, falls back to Mailbox.
+    Immediate = 2,
+
+    /// Presentation frames are kept in a single-frame queue. Every vertical blanking period,
+    /// the presentation engine will pop a frame from the queue. If there is no frame to display,
+    /// it will present the same frame again until the next vblank.
+    ///
+    /// When a present command is executed on the GPU, the frame will be put into the queue.
+    /// If there was already a frame in the queue, the new frame will _replace_ the old frame
+    /// on the queue.
+    ///
+    /// * **Tearing**: No tearing will be observed.
+    /// * **Also known as**: "Fast Vsync"
+    ///
+    /// If unsupported, falls back to Immediate.
+    Mailbox = 3,
+}
+
+impl PresentMode {
+    fn vk_present_mode(&self) -> Vec<vk::PresentModeKHR> {
+        match self {
+            PresentMode::Fifo => vec![vk::PresentModeKHR::FIFO, vk::PresentModeKHR::FIFO_RELAXED],
+            PresentMode::FifoRelaxed => {
+                vec![vk::PresentModeKHR::FIFO_RELAXED, vk::PresentModeKHR::FIFO]
+            }
+            PresentMode::Immediate => {
+                vec![vk::PresentModeKHR::IMMEDIATE, vk::PresentModeKHR::MAILBOX]
+            }
+            PresentMode::Mailbox => {
+                vec![vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
+            }
+        }
+    }
+}
+
 /// Information used to create a [`Swapchain`] instance.
 #[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[builder(
@@ -538,12 +609,8 @@ pub struct SwapchainInfo {
     /// The format and color space of the surface.
     pub surface: vk::SurfaceFormatKHR,
 
-    /// Determines if frames will be submitted to the display in a synchronous fashion or if they
-    /// should be displayed as fast as possible instead.
-    ///
-    /// Turn on to eliminate visual tearing at the expense of latency.
-    #[builder(default = "true")]
-    pub sync_display: bool,
+    /// Determines timing and queueing with which frames are actually displayed to the user.
+    pub present_mode: PresentMode,
 
     /// The initial width of the surface.
     pub width: u32,
@@ -558,7 +625,7 @@ impl SwapchainInfo {
             height,
             surface,
             desired_image_count: 3,
-            sync_display: true,
+            present_mode: PresentMode::FifoRelaxed,
         }
     }
 
@@ -569,7 +636,7 @@ impl SwapchainInfo {
             desired_image_count: Some(self.desired_image_count),
             height: Some(self.height),
             surface: Some(self.surface),
-            sync_display: Some(self.sync_display),
+            present_mode: Some(self.present_mode),
             width: Some(self.width),
         }
     }

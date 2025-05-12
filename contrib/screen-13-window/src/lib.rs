@@ -3,13 +3,13 @@ mod frame;
 pub use self::frame::FrameContext;
 
 use {
-    log::{info,trace, warn},
+    log::{info, trace, warn},
     screen_13::{
         driver::{
             ash::vk,
             device::{Device, DeviceInfo},
             surface::Surface,
-            swapchain::{Swapchain, SwapchainInfo},
+            swapchain::{PresentMode, Swapchain, SwapchainInfo},
             DriverError,
         },
         graph::RenderGraph,
@@ -90,7 +90,11 @@ impl Window {
                 }
 
                 if let Some(v_sync) = self.data.v_sync {
-                    swapchain_info = swapchain_info.sync_display(v_sync);
+                    swapchain_info = if v_sync {
+                        swapchain_info.present_mode(PresentMode::FifoRelaxed)
+                    } else {
+                        swapchain_info.present_mode(PresentMode::Mailbox)
+                    };
                 }
 
                 let swapchain = Swapchain::new(&self.device, surface, swapchain_info)?;
