@@ -355,10 +355,10 @@ pub const fn format_texel_block_size(fmt: vk::Format) -> u32 {
     }
 }
 
-/// Returns the dimension of a block of texels for the given Vulkan format.
-/// Uncompressed formats typically have a block dimension of `(1, 1)`.
+/// Returns the extent of a block of texels for the given Vulkan format.
+/// Uncompressed formats typically have a block extent of `(1, 1)`.
 /// See [Representation and Texel Block Size](https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#texel-block-size)
-pub const fn format_texel_block_dimensions(vk_format: vk::Format) -> (u32, u32) {
+pub const fn format_texel_block_extent(vk_format: vk::Format) -> (u32, u32) {
     match vk_format {
         vk::Format::R4G4_UNORM_PACK8
         | vk::Format::R8_UNORM
