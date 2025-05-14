@@ -347,7 +347,7 @@ pub mod prelude {
                 GraphicPipeline, GraphicPipelineInfo, GraphicPipelineInfoBuilder, StencilMode,
             },
             image::{
-                Image, ImageInfo, ImageInfoBuilder, ImageType, ImageViewInfo, ImageViewInfoBuilder,
+                Image, ImageInfo, ImageInfoBuilder, ImageViewInfo, ImageViewInfoBuilder,
                 SampleCount,
             },
             physical_device::{

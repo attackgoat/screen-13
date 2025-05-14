@@ -8,7 +8,7 @@ use {
         accel_struct::{AccelerationStructure, AccelerationStructureInfo},
         buffer::{Buffer, BufferInfo},
         device::Device,
-        image::{Image, ImageInfo, ImageType, SampleCount},
+        image::{Image, ImageInfo, SampleCount},
     },
     ash::vk,
     log::debug,
@@ -24,7 +24,7 @@ struct ImageKey {
     mip_level_count: u32,
     sample_count: SampleCount,
     tiling: vk::ImageTiling,
-    ty: ImageType,
+    ty: vk::ImageType,
     width: u32,
 }
 

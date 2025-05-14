@@ -119,29 +119,27 @@ impl BlendMode {
     pub fn new() -> BlendModeBuilder {
         BlendModeBuilder::default()
     }
-
-    pub(super) fn into_vk(self) -> vk::PipelineColorBlendAttachmentState {
-        vk::PipelineColorBlendAttachmentState {
-            blend_enable: if self.blend_enable {
-                vk::TRUE
-            } else {
-                vk::FALSE
-            },
-            src_color_blend_factor: self.src_color_blend_factor,
-            dst_color_blend_factor: self.dst_color_blend_factor,
-            color_blend_op: self.color_blend_op,
-            src_alpha_blend_factor: self.src_alpha_blend_factor,
-            dst_alpha_blend_factor: self.dst_alpha_blend_factor,
-            alpha_blend_op: self.alpha_blend_op,
-            color_write_mask: self.color_write_mask,
-        }
-    }
 }
 
 // the Builder derive Macro wants Default to be implemented for BlendMode
 impl Default for BlendMode {
     fn default() -> Self {
         Self::REPLACE
+    }
+}
+
+impl From<BlendMode> for vk::PipelineColorBlendAttachmentState {
+    fn from(mode: BlendMode) -> Self {
+        Self {
+            blend_enable: mode.blend_enable as _,
+            src_color_blend_factor: mode.src_color_blend_factor,
+            dst_color_blend_factor: mode.dst_color_blend_factor,
+            color_blend_op: mode.color_blend_op,
+            src_alpha_blend_factor: mode.src_alpha_blend_factor,
+            dst_alpha_blend_factor: mode.dst_alpha_blend_factor,
+            alpha_blend_op: mode.alpha_blend_op,
+            color_write_mask: mode.color_write_mask,
+        }
     }
 }
 
@@ -273,20 +271,20 @@ impl DepthStencilMode {
     pub fn new() -> DepthStencilModeBuilder {
         DepthStencilModeBuilder::default()
     }
+}
 
-    pub(super) fn into_vk(self) -> vk::PipelineDepthStencilStateCreateInfo<'static> {
-        vk::PipelineDepthStencilStateCreateInfo {
-            back: self.back.into_vk(),
-            depth_bounds_test_enable: self.bounds_test as _,
-            depth_compare_op: self.compare_op,
-            depth_test_enable: self.depth_test as _,
-            depth_write_enable: self.depth_write as _,
-            front: self.front.into_vk(),
-            max_depth_bounds: *self.max,
-            min_depth_bounds: *self.min,
-            stencil_test_enable: self.stencil_test as _,
-            ..Default::default()
-        }
+impl From<DepthStencilMode> for vk::PipelineDepthStencilStateCreateInfo<'_> {
+    fn from(mode: DepthStencilMode) -> Self {
+        Self::default()
+            .back(mode.back.into())
+            .depth_bounds_test_enable(mode.bounds_test as _)
+            .depth_compare_op(mode.compare_op)
+            .depth_test_enable(mode.depth_test as _)
+            .depth_write_enable(mode.depth_write as _)
+            .front(mode.front.into())
+            .max_depth_bounds(mode.max.into_inner())
+            .min_depth_bounds(mode.min.into_inner())
+            .stencil_test_enable(mode.stencil_test as _)
     }
 }
 
@@ -850,23 +848,25 @@ impl StencilMode {
         write_mask: 0,
         reference: 0,
     };
-
-    fn into_vk(self) -> vk::StencilOpState {
-        vk::StencilOpState {
-            fail_op: self.fail_op,
-            pass_op: self.pass_op,
-            depth_fail_op: self.depth_fail_op,
-            compare_op: self.compare_op,
-            compare_mask: self.compare_mask,
-            write_mask: self.write_mask,
-            reference: self.reference,
-        }
-    }
 }
 
 impl Default for StencilMode {
     fn default() -> Self {
         Self::IGNORE
+    }
+}
+
+impl From<StencilMode> for vk::StencilOpState {
+    fn from(mode: StencilMode) -> Self {
+        Self {
+            fail_op: mode.fail_op,
+            pass_op: mode.pass_op,
+            depth_fail_op: mode.depth_fail_op,
+            compare_op: mode.compare_op,
+            compare_mask: mode.compare_mask,
+            write_mask: mode.write_mask,
+            reference: mode.reference,
+        }
     }
 }
 

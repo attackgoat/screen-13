@@ -394,7 +394,7 @@ fn main() -> anyhow::Result<()> {
                     shadow_faces_node,
                     shadow_faces_info
                         .default_view_info()
-                        .with_ty(ImageType::Cube),
+                        .with_type(vk::ImageViewType::CUBE),
                 )
                 .access_node(model_mesh_index_buf, AccessType::IndexBuffer)
                 .access_node(model_mesh_vertex_buf, AccessType::VertexBuffer)

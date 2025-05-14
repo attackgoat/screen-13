@@ -14,7 +14,7 @@ use {
             buffer::Buffer,
             format_aspect_mask,
             graphic::{DepthStencilMode, GraphicPipeline},
-            image::{Image, ImageAccess, ImageViewInfo},
+            image::{Image, ImageAccess},
             image_access_layout, initial_image_layout_access, is_read_access, is_write_access,
             pipeline_stage_access_flags,
             swapchain::SwapchainImage,
@@ -440,18 +440,8 @@ impl Resolver {
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
-                        image_views[*attachment_idx as usize] = Image::view(
-                            image,
-                            ImageViewInfo {
-                                array_layer_count: attachment.array_layer_count,
-                                aspect_mask: attachment.aspect_mask,
-                                base_array_layer: attachment.base_array_layer,
-                                base_mip_level: attachment.base_mip_level,
-                                fmt: attachment.format,
-                                mip_level_count: attachment.mip_level_count,
-                                ty: image.info.ty,
-                            },
-                        )?;
+                        image_views[*attachment_idx as usize] =
+                            Image::view(image, attachment.image_view_info(image.info))?;
                     }
                 }
 
@@ -478,18 +468,8 @@ impl Resolver {
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
-                        image_views[*attachment_idx as usize] = Image::view(
-                            image,
-                            ImageViewInfo {
-                                array_layer_count: attachment.array_layer_count,
-                                aspect_mask: attachment.aspect_mask,
-                                base_array_layer: attachment.base_array_layer,
-                                base_mip_level: attachment.base_mip_level,
-                                fmt: attachment.format,
-                                mip_level_count: attachment.mip_level_count,
-                                ty: image.info.ty,
-                            },
-                        )?;
+                        image_views[*attachment_idx as usize] =
+                            Image::view(image, attachment.image_view_info(image.info))?;
                     }
                 }
 
@@ -514,18 +494,8 @@ impl Resolver {
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
-                        image_views[attachment_idx] = Image::view(
-                            image,
-                            ImageViewInfo {
-                                array_layer_count: attachment.array_layer_count,
-                                aspect_mask: attachment.aspect_mask,
-                                base_array_layer: attachment.base_array_layer,
-                                base_mip_level: attachment.base_mip_level,
-                                fmt: attachment.format,
-                                mip_level_count: attachment.mip_level_count,
-                                ty: image.info.ty,
-                            },
-                        )?;
+                        image_views[attachment_idx] =
+                            Image::view(image, attachment.image_view_info(image.info))?;
                     }
                 }
 
@@ -550,18 +520,8 @@ impl Resolver {
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
-                        image_views[attachment_idx] = Image::view(
-                            image,
-                            ImageViewInfo {
-                                array_layer_count: attachment.array_layer_count,
-                                aspect_mask: attachment.aspect_mask,
-                                base_array_layer: attachment.base_array_layer,
-                                base_mip_level: attachment.base_mip_level,
-                                fmt: attachment.format,
-                                mip_level_count: attachment.mip_level_count,
-                                ty: image.info.ty,
-                            },
-                        )?;
+                        image_views[attachment_idx] =
+                            Image::view(image, attachment.image_view_info(image.info))?;
                     }
                 }
 
@@ -584,18 +544,8 @@ impl Resolver {
                         attachment_image.layer_count = attachment.array_layer_count;
                         attachment_image.view_formats.insert(idx, attachment.format);
 
-                        image_views[attachment_idx] = Image::view(
-                            image,
-                            ImageViewInfo {
-                                array_layer_count: attachment.array_layer_count,
-                                aspect_mask: attachment.aspect_mask,
-                                base_array_layer: attachment.base_array_layer,
-                                base_mip_level: attachment.base_mip_level,
-                                fmt: attachment.format,
-                                mip_level_count: attachment.mip_level_count,
-                                ty: image.info.ty,
-                            },
-                        )?;
+                        image_views[attachment_idx] =
+                            Image::view(image, attachment.image_view_info(image.info))?;
                     }
                 }
             }
@@ -3199,15 +3149,14 @@ impl Resolver {
                             let image_range = late.subresource.as_image().unwrap();
                             let image_binding = &bindings[attachment.target];
                             let image = image_binding.as_driver_image().unwrap();
-                            let image_view_info = ImageViewInfo {
-                                array_layer_count: image_range.layer_count,
-                                aspect_mask: attachment.aspect_mask,
-                                base_array_layer: image_range.base_array_layer,
-                                base_mip_level: image_range.base_mip_level,
-                                fmt: attachment.format,
-                                mip_level_count: image_range.level_count,
-                                ty: image.info.ty,
-                            };
+                            let image_view_info = attachment
+                                .image_view_info(image.info)
+                                .to_builder()
+                                .array_layer_count(image_range.layer_count)
+                                .base_array_layer(image_range.base_array_layer)
+                                .base_mip_level(image_range.base_mip_level)
+                                .mip_level_count(image_range.level_count)
+                                .build();
                             let image_view = Image::view(image, image_view_info)?;
 
                             tls.image_writes.push(IndexWrite {

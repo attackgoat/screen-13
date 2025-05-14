@@ -129,9 +129,8 @@ fn fill_depth_image(
     );
 
     // Not required, but good practice: Check image format support
-    let image_fmt_props =
-        Device::image_format_properties(device, fmt, ty.into(), tiling, usage, flags)?
-            .ok_or(DriverError::Unsupported)?;
+    let image_fmt_props = Device::image_format_properties(device, fmt, ty, tiling, usage, flags)?
+        .ok_or(DriverError::Unsupported)?;
     if size > image_fmt_props.max_extent.width || size > image_fmt_props.max_extent.height {
         // In this case you might use a smaller image
         warn!("Requested image is too big");

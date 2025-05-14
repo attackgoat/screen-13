@@ -2,7 +2,7 @@
 
 use {
     super::{DriverError, device::Device, format_aspect_mask},
-    ash::vk,
+    ash::vk::{self, ImageCreateInfo},
     derive_builder::{Builder, UninitializedFieldError},
     gpu_allocator::{
         MemoryLocation,
@@ -146,9 +146,9 @@ impl Image {
         let accesses = Mutex::new(ImageAccess::new(info, AccessType::Nothing));
 
         let device = Arc::clone(device);
-        let create_info = info
-            .image_create_info()
-            .queue_family_indices(&device.physical_device.queue_family_indices);
+        let create_info: ImageCreateInfo = info.into();
+        let create_info =
+            create_info.queue_family_indices(&device.physical_device.queue_family_indices);
         let image = unsafe {
             device.create_image(&create_info, None).map_err(|err| {
                 warn!("{err}");
@@ -727,7 +727,7 @@ pub struct ImageInfo {
     ///
     /// Layers in array textures do not count as a dimension for the purposes of the image type.
     #[builder(setter(strip_option))]
-    pub ty: ImageType,
+    pub ty: vk::ImageType,
 
     /// A bitmask of describing the intended usage of the image.
     #[builder(default, setter(strip_option))]
@@ -742,7 +742,7 @@ impl ImageInfo {
     /// Specifies a cube image.
     #[inline(always)]
     pub const fn cube(size: u32, fmt: vk::Format, usage: vk::ImageUsageFlags) -> ImageInfo {
-        let mut res = Self::new(ImageType::Cube, size, size, 1, 6, fmt, usage);
+        let mut res = Self::new(vk::ImageType::TYPE_2D, size, size, 1, 6, fmt, usage);
         res.flags = vk::ImageCreateFlags::from_raw(
             vk::ImageCreateFlags::CUBE_COMPATIBLE.as_raw() | res.flags.as_raw(),
         );
@@ -753,7 +753,7 @@ impl ImageInfo {
     /// Specifies a one-dimensional image.
     #[inline(always)]
     pub const fn image_1d(size: u32, fmt: vk::Format, usage: vk::ImageUsageFlags) -> ImageInfo {
-        Self::new(ImageType::Texture1D, size, 1, 1, 1, fmt, usage)
+        Self::new(vk::ImageType::TYPE_1D, size, 1, 1, 1, fmt, usage)
     }
 
     /// Specifies a two-dimensional image.
@@ -764,7 +764,7 @@ impl ImageInfo {
         fmt: vk::Format,
         usage: vk::ImageUsageFlags,
     ) -> ImageInfo {
-        Self::new(ImageType::Texture2D, width, height, 1, 1, fmt, usage)
+        Self::new(vk::ImageType::TYPE_2D, width, height, 1, 1, fmt, usage)
     }
 
     /// Specifies a two-dimensional image array.
@@ -777,7 +777,7 @@ impl ImageInfo {
         usage: vk::ImageUsageFlags,
     ) -> ImageInfo {
         Self::new(
-            ImageType::TextureArray2D,
+            vk::ImageType::TYPE_2D,
             width,
             height,
             1,
@@ -796,12 +796,12 @@ impl ImageInfo {
         fmt: vk::Format,
         usage: vk::ImageUsageFlags,
     ) -> ImageInfo {
-        Self::new(ImageType::Texture3D, width, height, depth, 1, fmt, usage)
+        Self::new(vk::ImageType::TYPE_3D, width, height, depth, 1, fmt, usage)
     }
 
     #[inline(always)]
     const fn new(
-        ty: ImageType,
+        ty: vk::ImageType,
         width: u32,
         height: u32,
         depth: u32,
@@ -824,146 +824,28 @@ impl ImageInfo {
         }
     }
 
-    /// Specifies a one-dimensional image.
-    #[deprecated = "Use ImageInfo::image_1d()"]
-    #[doc(hidden)]
-    pub fn new_1d(fmt: vk::Format, size: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
-        Self::image_1d(size, fmt, usage).to_builder()
-    }
-
-    /// Specifies a two-dimensional image.
-    #[deprecated = "Use ImageInfo::image_2d()"]
-    #[doc(hidden)]
-    pub fn new_2d(
-        fmt: vk::Format,
-        width: u32,
-        height: u32,
-        usage: vk::ImageUsageFlags,
-    ) -> ImageInfoBuilder {
-        Self::image_2d(width, height, fmt, usage).to_builder()
-    }
-
-    /// Specifies a two-dimensional image array.
-    #[deprecated = "Use ImageInfo::image_2d_array()"]
-    #[doc(hidden)]
-    pub fn new_2d_array(
-        fmt: vk::Format,
-        width: u32,
-        height: u32,
-        array_elements: u32,
-        usage: vk::ImageUsageFlags,
-    ) -> ImageInfoBuilder {
-        Self::image_2d_array(width, height, array_elements, fmt, usage).to_builder()
-    }
-
-    /// Specifies a three-dimensional image.
-    #[deprecated = "Use ImageInfo::image_3d()"]
-    #[doc(hidden)]
-    pub fn new_3d(
-        fmt: vk::Format,
-        width: u32,
-        height: u32,
-        depth: u32,
-        usage: vk::ImageUsageFlags,
-    ) -> ImageInfoBuilder {
-        Self::image_3d(width, height, depth, fmt, usage).to_builder()
-    }
-
-    /// Specifies a cube image.
-    #[deprecated = "Use ImageInfo::cube()"]
-    #[doc(hidden)]
-    pub fn new_cube(fmt: vk::Format, size: u32, usage: vk::ImageUsageFlags) -> ImageInfoBuilder {
-        Self::cube(size, fmt, usage).to_builder()
-    }
-
     /// Provides an `ImageViewInfo` for this format, type, aspect, array elements, and mip levels.
     pub fn default_view_info(self) -> ImageViewInfo {
         self.into()
     }
 
-    fn image_create_info<'a>(self) -> vk::ImageCreateInfo<'a> {
-        let (ty, extent, array_layer_count) = match self.ty {
-            ImageType::Texture1D => (
-                vk::ImageType::TYPE_1D,
-                vk::Extent3D {
-                    width: self.width,
-                    height: 1,
-                    depth: 1,
-                },
-                1,
-            ),
-            ImageType::TextureArray1D => (
-                vk::ImageType::TYPE_1D,
-                vk::Extent3D {
-                    width: self.width,
-                    height: 1,
-                    depth: 1,
-                },
-                self.array_layer_count,
-            ),
-            ImageType::Texture2D => (
-                vk::ImageType::TYPE_2D,
-                vk::Extent3D {
-                    width: self.width,
-                    height: self.height,
-                    depth: 1,
-                },
-                if self.flags.contains(vk::ImageCreateFlags::CUBE_COMPATIBLE) {
-                    self.array_layer_count
-                } else {
-                    1
-                },
-            ),
-            ImageType::TextureArray2D => (
-                vk::ImageType::TYPE_2D,
-                vk::Extent3D {
-                    width: self.width,
-                    height: self.height,
-                    depth: 1,
-                },
-                self.array_layer_count,
-            ),
-            ImageType::Texture3D => (
-                vk::ImageType::TYPE_3D,
-                vk::Extent3D {
-                    width: self.width,
-                    height: self.height,
-                    depth: self.depth,
-                },
-                1,
-            ),
-            ImageType::Cube => (
-                vk::ImageType::TYPE_2D,
-                vk::Extent3D {
-                    width: self.width,
-                    height: self.height,
-                    depth: 1,
-                },
-                6,
-            ),
-            ImageType::CubeArray => (
-                vk::ImageType::TYPE_2D,
-                vk::Extent3D {
-                    width: self.width,
-                    height: self.height,
-                    depth: 1,
-                },
-                6 * self.array_layer_count,
-            ),
-        };
+    /// Returns `true` if this image is an array
+    pub fn is_array(self) -> bool {
+        self.array_layer_count > 1
+    }
 
-        vk::ImageCreateInfo::default()
-            .flags(self.flags)
-            .image_type(ty)
-            .format(self.fmt)
-            .extent(extent)
-            .mip_levels(self.mip_level_count)
-            .array_layers(array_layer_count)
-            .samples(self.sample_count.into())
-            .tiling(self.tiling)
-            .usage(self.usage)
-            .sharing_mode(vk::SharingMode::CONCURRENT)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
+    /// Returns `true` if this image is a cube or cube array
+    pub fn is_cube(self) -> bool {
+        self.ty == vk::ImageType::TYPE_2D
+            && self.width == self.height
+            && self.depth == 1
+            && self.array_layer_count >= 6
+            && self.flags.contains(vk::ImageCreateFlags::CUBE_COMPATIBLE)
+    }
+
+    /// Returns `true` if this image is a cube array
+    pub fn is_cube_array(self) -> bool {
+        self.is_cube() && self.array_layer_count > 6
     }
 
     /// Converts an `ImageInfo` into an `ImageInfoBuilder`.
@@ -982,6 +864,27 @@ impl ImageInfo {
             usage: Some(self.usage),
             width: Some(self.width),
         }
+    }
+}
+
+impl From<ImageInfo> for vk::ImageCreateInfo<'_> {
+    fn from(value: ImageInfo) -> Self {
+        Self::default()
+            .flags(value.flags)
+            .image_type(value.ty)
+            .format(value.fmt)
+            .extent(vk::Extent3D {
+                width: value.width,
+                height: value.height,
+                depth: value.depth,
+            })
+            .mip_levels(value.mip_level_count)
+            .array_layers(value.array_layer_count)
+            .samples(value.sample_count.into())
+            .tiling(value.tiling)
+            .usage(value.usage)
+            .sharing_mode(vk::SharingMode::CONCURRENT)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
     }
 }
 
@@ -1033,53 +936,6 @@ impl From<ImageViewInfo> for vk::ImageSubresourceRange {
     }
 }
 
-// TODO: Remove this and use vk::ImageType instead
-/// Describes the number of dimensions and array elements of an image.
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum ImageType {
-    /// One dimensional (linear) image.
-    Texture1D = 0,
-    /// One dimensional (linear) image with multiple array elements.
-    TextureArray1D = 1,
-    /// Two dimensional (planar) image.
-    Texture2D = 2,
-    /// Two dimensional (planar) image with multiple array elements.
-    TextureArray2D = 3,
-    /// Three dimensional (volume) image.
-    Texture3D = 4,
-    /// Six two-dimensional images.
-    Cube = 5,
-    /// Six two-dimensional images with multiple array elements.
-    CubeArray = 6,
-}
-
-impl ImageType {
-    pub(crate) fn into_vk(self) -> vk::ImageViewType {
-        match self {
-            Self::Cube => vk::ImageViewType::CUBE,
-            Self::CubeArray => vk::ImageViewType::CUBE_ARRAY,
-            Self::Texture1D => vk::ImageViewType::TYPE_1D,
-            Self::Texture2D => vk::ImageViewType::TYPE_2D,
-            Self::Texture3D => vk::ImageViewType::TYPE_3D,
-            Self::TextureArray1D => vk::ImageViewType::TYPE_1D_ARRAY,
-            Self::TextureArray2D => vk::ImageViewType::TYPE_2D_ARRAY,
-        }
-    }
-}
-
-impl From<ImageType> for vk::ImageType {
-    fn from(value: ImageType) -> Self {
-        match value {
-            ImageType::Texture1D | ImageType::TextureArray1D => vk::ImageType::TYPE_1D,
-            ImageType::Texture2D
-            | ImageType::TextureArray2D
-            | ImageType::Cube
-            | ImageType::CubeArray => vk::ImageType::TYPE_2D,
-            ImageType::Texture3D => vk::ImageType::TYPE_3D,
-        }
-    }
-}
-
 struct ImageView {
     device: Arc<Device>,
     image_view: vk::ImageView,
@@ -1095,7 +951,7 @@ impl ImageView {
         let info = info.into();
         let device = Arc::clone(device);
         let create_info = vk::ImageViewCreateInfo::default()
-            .view_type(info.ty.into_vk())
+            .view_type(info.ty)
             .format(info.fmt)
             .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::R,
@@ -1172,7 +1028,7 @@ pub struct ImageViewInfo {
     pub mip_level_count: u32,
 
     /// The basic dimensionality of the view.
-    pub ty: ImageType,
+    pub ty: vk::ImageViewType,
 }
 
 impl ImageViewInfo {
@@ -1182,7 +1038,7 @@ impl ImageViewInfo {
     ///
     /// Automatically sets [`aspect_mask`](Self::aspect_mask) to a suggested value.
     #[inline(always)]
-    pub const fn new(fmt: vk::Format, ty: ImageType) -> ImageViewInfo {
+    pub const fn new(fmt: vk::Format, ty: vk::ImageViewType) -> ImageViewInfo {
         Self {
             array_layer_count: vk::REMAINING_ARRAY_LAYERS,
             aspect_mask: format_aspect_mask(fmt),
@@ -1208,8 +1064,8 @@ impl ImageViewInfo {
         }
     }
 
-    /// Takes this instance and returns it with a newly specified `ImageType`.
-    pub fn with_ty(mut self, ty: ImageType) -> Self {
+    /// Takes this instance and returns it with a newly specified `ImageViewType`.
+    pub fn with_type(mut self, ty: vk::ImageViewType) -> Self {
         self.ty = ty;
         self
     }
@@ -1224,7 +1080,25 @@ impl From<ImageInfo> for ImageViewInfo {
             base_mip_level: 0,
             fmt: info.fmt,
             mip_level_count: info.mip_level_count,
-            ty: info.ty,
+            ty: match (info.ty, info.array_layer_count) {
+                (vk::ImageType::TYPE_1D, 1) => vk::ImageViewType::TYPE_1D,
+                (vk::ImageType::TYPE_1D, _) => vk::ImageViewType::TYPE_1D_ARRAY,
+                (vk::ImageType::TYPE_2D, 1) => vk::ImageViewType::TYPE_2D,
+                (vk::ImageType::TYPE_2D, 6)
+                    if info.flags.contains(vk::ImageCreateFlags::CUBE_COMPATIBLE) =>
+                {
+                    vk::ImageViewType::CUBE
+                }
+                (vk::ImageType::TYPE_2D, _)
+                    if info.flags.contains(vk::ImageCreateFlags::CUBE_COMPATIBLE)
+                        && info.array_layer_count > 6 =>
+                {
+                    vk::ImageViewType::CUBE_ARRAY
+                }
+                (vk::ImageType::TYPE_2D, _) => vk::ImageViewType::TYPE_2D_ARRAY,
+                (vk::ImageType::TYPE_3D, _) => vk::ImageViewType::TYPE_3D,
+                _ => unimplemented!(),
+            },
         }
     }
 }
@@ -1236,13 +1110,6 @@ impl From<ImageViewInfoBuilder> for ImageViewInfo {
 }
 
 impl ImageViewInfoBuilder {
-    /// Specifies a default view with the given `fmt` and `ty` values.
-    #[deprecated = "Use ImageViewInfo::new()"]
-    #[doc(hidden)]
-    pub fn new(fmt: vk::Format, ty: ImageType) -> Self {
-        Self::default().fmt(fmt).ty(ty)
-    }
-
     /// Builds a new 'ImageViewInfo'.
     ///
     /// # Panics
@@ -2167,11 +2034,13 @@ mod tests {
     pub fn image_info_cube_builder() {
         let info = ImageInfo::cube(42, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
         let builder = ImageInfoBuilder::default()
-            .ty(ImageType::Cube)
+            .ty(vk::ImageType::TYPE_2D)
             .fmt(vk::Format::R32_SFLOAT)
             .width(42)
             .height(42)
             .depth(1)
+            .array_layer_count(6)
+            .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
             .build();
 
         assert_eq!(info, builder);
@@ -2189,7 +2058,7 @@ mod tests {
     pub fn image_info_image_1d_builder() {
         let info = ImageInfo::image_1d(42, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
         let builder = ImageInfoBuilder::default()
-            .ty(ImageType::Texture1D)
+            .ty(vk::ImageType::TYPE_1D)
             .fmt(vk::Format::R32_SFLOAT)
             .width(42)
             .height(1)
@@ -2213,7 +2082,7 @@ mod tests {
         let info =
             ImageInfo::image_2d(42, 84, vk::Format::R32_SFLOAT, vk::ImageUsageFlags::empty());
         let builder = ImageInfoBuilder::default()
-            .ty(ImageType::Texture2D)
+            .ty(vk::ImageType::TYPE_2D)
             .fmt(vk::Format::R32_SFLOAT)
             .width(42)
             .height(84)
@@ -2247,7 +2116,7 @@ mod tests {
             vk::ImageUsageFlags::empty(),
         );
         let builder = ImageInfoBuilder::default()
-            .ty(ImageType::TextureArray2D)
+            .ty(vk::ImageType::TYPE_2D)
             .fmt(vk::Format::R32_SFLOAT)
             .width(42)
             .height(84)
@@ -2282,7 +2151,7 @@ mod tests {
             vk::ImageUsageFlags::empty(),
         );
         let builder = ImageInfoBuilder::default()
-            .ty(ImageType::Texture3D)
+            .ty(vk::ImageType::TYPE_3D)
             .fmt(vk::Format::R32_SFLOAT)
             .width(42)
             .height(84)
@@ -2330,7 +2199,7 @@ mod tests {
             .depth(1)
             .fmt(vk::Format::default())
             .height(2)
-            .ty(ImageType::Texture2D)
+            .ty(vk::ImageType::TYPE_2D)
             .build();
     }
 
@@ -2413,7 +2282,7 @@ mod tests {
 
     #[test]
     pub fn image_view_info() {
-        let info = ImageViewInfo::new(vk::Format::default(), ImageType::Texture1D);
+        let info = ImageViewInfo::new(vk::Format::default(), vk::ImageViewType::TYPE_1D);
         let builder = info.to_builder().build();
 
         assert_eq!(info, builder);
@@ -2421,10 +2290,10 @@ mod tests {
 
     #[test]
     pub fn image_view_info_builder() {
-        let info = ImageViewInfo::new(vk::Format::default(), ImageType::Texture1D);
+        let info = ImageViewInfo::new(vk::Format::default(), vk::ImageViewType::TYPE_1D);
         let builder = ImageViewInfoBuilder::default()
             .fmt(vk::Format::default())
-            .ty(ImageType::Texture1D)
+            .ty(vk::ImageViewType::TYPE_1D)
             .aspect_mask(vk::ImageAspectFlags::COLOR)
             .build();
 

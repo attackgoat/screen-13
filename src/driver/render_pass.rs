@@ -339,7 +339,7 @@ impl RenderPass {
         let color_blend_attachment_states = this.info.subpasses[subpass_idx as usize]
             .color_attachments
             .iter()
-            .map(|_| pipeline.info.blend.into_vk())
+            .map(|_| pipeline.info.blend.into())
             .collect::<Box<[_]>>();
         let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
             .attachments(&color_blend_attachment_states);
@@ -399,9 +399,7 @@ impl RenderPass {
             topology: pipeline.info.topology,
             ..Default::default()
         };
-        let depth_stencil = depth_stencil
-            .map(|depth_stencil| depth_stencil.into_vk())
-            .unwrap_or_default();
+        let depth_stencil = depth_stencil.map(Into::into).unwrap_or_default();
         let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
             front_face: pipeline.info.front_face,
             line_width: 1.0,

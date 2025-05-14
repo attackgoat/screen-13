@@ -36,7 +36,7 @@ use {
         device::Device,
         format_aspect_mask, format_texel_block_extent, format_texel_block_size,
         graphic::{DepthStencilMode, GraphicPipeline},
-        image::{ImageType, ImageViewInfo, SampleCount},
+        image::{ImageInfo, ImageViewInfo, SampleCount},
         image_subresource_range_from_layers,
         ray_trace::RayTracePipeline,
         render_pass::ResolveMode,
@@ -101,7 +101,7 @@ impl Attachment {
         Self::are_identical(lhs.unwrap(), rhs.unwrap())
     }
 
-    pub fn are_identical(lhs: Self, rhs: Self) -> bool {
+    fn are_identical(lhs: Self, rhs: Self) -> bool {
         lhs.array_layer_count == rhs.array_layer_count
             && lhs.base_array_layer == rhs.base_array_layer
             && lhs.base_mip_level == rhs.base_mip_level
@@ -109,6 +109,21 @@ impl Attachment {
             && lhs.mip_level_count == rhs.mip_level_count
             && lhs.sample_count == rhs.sample_count
             && lhs.target == rhs.target
+    }
+
+    fn image_view_info(self, image_info: ImageInfo) -> ImageViewInfo {
+        image_info
+            .to_builder()
+            .array_layer_count(self.array_layer_count)
+            .mip_level_count(self.mip_level_count)
+            .fmt(self.format)
+            .build()
+            .default_view_info()
+            .to_builder()
+            .aspect_mask(self.aspect_mask)
+            .base_array_layer(self.base_array_layer)
+            .base_mip_level(self.base_mip_level)
+            .build()
     }
 }
 
@@ -689,7 +704,7 @@ impl RenderGraph {
         .submit_pass()
     }
 
-    /// Copy data between images.
+    /// Copy all layers of a source image to a destination image.
     pub fn copy_image(
         &mut self,
         src_node: impl Into<AnyImageNode>,
@@ -709,22 +724,14 @@ impl RenderGraph {
                     aspect_mask: format_aspect_mask(src_info.fmt),
                     mip_level: 0,
                     base_array_layer: 0,
-                    layer_count: if matches!(src_info.ty, ImageType::Cube | ImageType::CubeArray) {
-                        6
-                    } else {
-                        1
-                    },
+                    layer_count: src_info.array_layer_count,
                 },
                 src_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
                 dst_subresource: vk::ImageSubresourceLayers {
                     aspect_mask: format_aspect_mask(dst_info.fmt),
                     mip_level: 0,
                     base_array_layer: 0,
-                    layer_count: if matches!(dst_info.ty, ImageType::Cube | ImageType::CubeArray) {
-                        6
-                    } else {
-                        1
-                    },
+                    layer_count: src_info.array_layer_count,
                 },
                 dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
                 extent: vk::Extent3D {
