@@ -9,7 +9,7 @@ use {
             ash::vk,
             device::{Device, DeviceInfo},
             surface::Surface,
-            swapchain::{PresentMode, Swapchain, SwapchainInfo},
+            swapchain::{Swapchain, SwapchainInfo},
             DriverError,
         },
         graph::RenderGraph,
@@ -91,9 +91,15 @@ impl Window {
 
                 if let Some(v_sync) = self.data.v_sync {
                     swapchain_info = if v_sync {
-                        swapchain_info.present_mode(PresentMode::FifoRelaxed)
+                        swapchain_info.present_modes(vec![
+                            vk::PresentModeKHR::FIFO_RELAXED,
+                            vk::PresentModeKHR::FIFO,
+                        ])
                     } else {
-                        swapchain_info.present_mode(PresentMode::Mailbox)
+                        swapchain_info.present_modes(vec![
+                            vk::PresentModeKHR::MAILBOX,
+                            vk::PresentModeKHR::IMMEDIATE,
+                        ])
                     };
                 }
 

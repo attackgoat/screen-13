@@ -181,7 +181,7 @@ impl Swapchain {
 
     /// Gets information about this swapchain.
     pub fn info(&self) -> SwapchainInfo {
-        self.info
+        self.info.clone()
     }
 
     /// Presents an image which has been previously acquired using
@@ -250,7 +250,7 @@ impl Swapchain {
     fn recreate_swapchain(&mut self) -> Result<(), DriverError> {
         Self::destroy_swapchain(&self.device, &mut self.old_swapchain);
 
-        let (surface_capabilities, present_modes) = {
+        let (surface_capabilities, supported_present_modes) = {
             let surface_ext = Device::expect_surface_ext(&self.device);
             let surface_capabilities = unsafe {
                 surface_ext.get_physical_device_surface_capabilities(
@@ -261,7 +261,7 @@ impl Swapchain {
             .inspect_err(|err| warn!("unable to get surface capabilities: {err}"))
             .or(Err(DriverError::Unsupported))?;
 
-            let present_modes = unsafe {
+            let supported_present_modes = unsafe {
                 surface_ext.get_physical_device_surface_present_modes(
                     *self.device.physical_device,
                     *self.surface,
@@ -270,7 +270,7 @@ impl Swapchain {
             .inspect_err(|err| warn!("unable to get surface present modes: {err}"))
             .or(Err(DriverError::Unsupported))?;
 
-            (surface_capabilities, present_modes)
+            (surface_capabilities, supported_present_modes)
         };
 
         let desired_image_count =
@@ -301,11 +301,12 @@ impl Swapchain {
             return Err(DriverError::Unsupported);
         }
 
-        let present_mode_preference = self.info.present_mode.vk_present_mode();
-        let present_mode = present_mode_preference
-            .into_iter()
-            .find(|mode| present_modes.contains(mode))
-            .unwrap_or(vk::PresentModeKHR::FIFO);
+        let present_mode = self
+            .info
+            .present_modes
+            .iter()
+            .find(|mode| supported_present_modes.contains(mode))
+            .unwrap_or(&vk::PresentModeKHR::FIFO);
 
         let pre_transform = if surface_capabilities
             .supported_transforms
@@ -330,7 +331,7 @@ impl Swapchain {
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(present_mode)
+            .present_mode(*present_mode)
             .clipped(true)
             .old_swapchain(self.swapchain)
             .image_array_layers(1);
@@ -513,86 +514,11 @@ impl Deref for SwapchainImage {
     }
 }
 
-/// Timing and queueing with which frames are actually displayed to the user.
-/// If the selected mode is unavailable the most similar available fallback will be selected.
-#[derive(Default, Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum PresentMode {
-    /// Presentation frames are kept in a First-In-First-Out queue approximately 3 frames
-    /// long. Every vertical blanking period, the presentation engine will pop a frame
-    /// off the queue to display. If there is no frame to display, it will present the same
-    /// frame again until the next vblank.
-    ///
-    /// When a present command is executed on the GPU, the presented image is added on the queue.
-    ///
-    /// * **Tearing:** No tearing will be observed.
-    /// * **Also known as**: "Vsync On"
-    ///
-    /// If unsupported, falls back to FifoRelaxed.
-    Fifo = 0,
-
-    /// Presentation frames are kept in a First-In-First-Out queue approximately 3 frames
-    /// long. Every vertical blanking period, the presentation engine will pop a frame
-    /// off the queue to display. If there is no frame to display, it will present the
-    /// same frame until there is a frame in the queue. The moment there is a frame in the
-    /// queue, it will immediately pop the frame off the queue.
-    ///
-    /// When a present command is executed on the GPU, the presented image is added on the queue.
-    ///
-    /// * **Tearing**:
-    ///   Tearing will be observed if frames last more than one vblank as the front buffer.
-    /// * **Also known as**: "Adaptive Vsync"
-    ///
-    /// If unsupported, falls back to Fifo.
-    #[default]
-    FifoRelaxed = 1,
-
-    /// Presentation frames are not queued at all. The moment a present command
-    /// is executed on the GPU, the presented image is swapped onto the front buffer
-    /// immediately.
-    ///
-    /// * **Tearing**: Tearing can be observed.
-    /// * **Also known as**: "Vsync Off"
-    ///
-    /// If unsupported, falls back to Mailbox.
-    Immediate = 2,
-
-    /// Presentation frames are kept in a single-frame queue. Every vertical blanking period,
-    /// the presentation engine will pop a frame from the queue. If there is no frame to display,
-    /// it will present the same frame again until the next vblank.
-    ///
-    /// When a present command is executed on the GPU, the frame will be put into the queue.
-    /// If there was already a frame in the queue, the new frame will _replace_ the old frame
-    /// on the queue.
-    ///
-    /// * **Tearing**: No tearing will be observed.
-    /// * **Also known as**: "Fast Vsync"
-    ///
-    /// If unsupported, falls back to Immediate.
-    Mailbox = 3,
-}
-
-impl PresentMode {
-    fn vk_present_mode(&self) -> Vec<vk::PresentModeKHR> {
-        match self {
-            PresentMode::Fifo => vec![vk::PresentModeKHR::FIFO, vk::PresentModeKHR::FIFO_RELAXED],
-            PresentMode::FifoRelaxed => {
-                vec![vk::PresentModeKHR::FIFO_RELAXED, vk::PresentModeKHR::FIFO]
-            }
-            PresentMode::Immediate => {
-                vec![vk::PresentModeKHR::IMMEDIATE, vk::PresentModeKHR::MAILBOX]
-            }
-            PresentMode::Mailbox => {
-                vec![vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
-            }
-        }
-    }
-}
-
 /// Information used to create a [`Swapchain`] instance.
-#[derive(Builder, Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Builder, Clone, Debug, Eq, Hash, PartialEq)]
 #[builder(
     build_fn(private, name = "fallible_build", error = "SwapchainInfoBuilderError"),
-    derive(Clone, Copy, Debug),
+    derive(Clone, Debug),
     pattern = "owned"
 )]
 #[non_exhaustive]
@@ -609,8 +535,47 @@ pub struct SwapchainInfo {
     /// The format and color space of the surface.
     pub surface: vk::SurfaceFormatKHR,
 
-    /// Determines timing and queueing with which frames are actually displayed to the user.
-    pub present_mode: PresentMode,
+    /// `vk::PresentModeKHR` Determines timing and queueing with which frames are actually displayed to the user.
+    /// `present_modes` is a set of these modes ordered by preference. If the first mode is not available it will fall
+    /// back to the next, etc...    
+    ///
+    /// `vk::PresentModeKHR::FIFO` - Presentation frames are kept in a First-In-First-Out queue approximately 3 frames
+    /// long. Every vertical blanking period, the presentation engine will pop a frame off the queue to display. If
+    /// there is no frame to display, it will present the same frame again until the next vblank.
+    ///
+    /// When a present command is executed on the GPU, the presented image is added on the queue.
+    ///
+    /// * **Tearing:** No tearing will be observed.
+    /// * **Also known as**: "Vsync On"
+    ///
+    /// `vk::PresentModeKHR::FIFO_RELAXED` - Presentation frames are kept in a First-In-First-Out queue approximately 3
+    /// frames long. Every vertical blanking period, the presentation engine will pop a frame off the queue to display.
+    /// If there is no frame to display, it will present the same frame until there is a frame in the queue. The moment
+    /// there is a frame in the queue, it will immediately pop the frame off the queue.
+    ///
+    /// When a present command is executed on the GPU, the presented image is added on the queue.
+    ///
+    /// * **Tearing**:
+    ///   Tearing will be observed if frames last more than one vblank as the front buffer.
+    /// * **Also known as**: "Adaptive Vsync"
+    ///
+    /// `vk::PresentModeKHR::IMMEDIATE` - Presentation frames are not queued at all. The moment a present command is
+    /// executed on the GPU, the presented image is swapped onto the front buffer immediately.
+    ///
+    /// * **Tearing**: Tearing can be observed.
+    /// * **Also known as**: "Vsync Off"
+    ///
+    /// `vk::PresentModeKHR::MAILBOX` - Presentation frames are kept in a single-frame queue. Every vertical blanking
+    /// period, the presentation engine will pop a frame from the queue. If there is no frame to display, it will
+    /// present the same frame again until the next vblank.
+    ///
+    /// When a present command is executed on the GPU, the frame will be put into the queue.
+    /// If there was already a frame in the queue, the new frame will _replace_ the old frame
+    /// on the queue.
+    ///
+    /// * **Tearing**: No tearing will be observed.
+    /// * **Also known as**: "Fast Vsync"
+    pub present_modes: Vec<vk::PresentModeKHR>,
 
     /// The initial width of the surface.
     pub width: u32,
@@ -619,13 +584,13 @@ pub struct SwapchainInfo {
 impl SwapchainInfo {
     /// Specifies a default swapchain with the given `width`, `height` and `format` values.
     #[inline(always)]
-    pub const fn new(width: u32, height: u32, surface: vk::SurfaceFormatKHR) -> SwapchainInfo {
+    pub fn new(width: u32, height: u32, surface: vk::SurfaceFormatKHR) -> SwapchainInfo {
         Self {
             width,
             height,
             surface,
             desired_image_count: 3,
-            present_mode: PresentMode::FifoRelaxed,
+            present_modes: vec![vk::PresentModeKHR::FIFO_RELAXED, vk::PresentModeKHR::FIFO],
         }
     }
 
@@ -636,7 +601,7 @@ impl SwapchainInfo {
             desired_image_count: Some(self.desired_image_count),
             height: Some(self.height),
             surface: Some(self.surface),
-            present_mode: Some(self.present_mode),
+            present_modes: Some(self.present_modes),
             width: Some(self.width),
         }
     }
