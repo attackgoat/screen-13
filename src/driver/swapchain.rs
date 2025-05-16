@@ -575,6 +575,7 @@ pub struct SwapchainInfo {
     ///
     /// * **Tearing**: No tearing will be observed.
     /// * **Also known as**: "Fast Vsync"
+    #[builder(default = vec![vk::PresentModeKHR::FIFO_RELAXED, vk::PresentModeKHR::FIFO])]
     pub present_modes: Vec<vk::PresentModeKHR>,
 
     /// The initial width of the surface.
@@ -651,7 +652,7 @@ mod tests {
     #[test]
     pub fn swapchain_info() {
         let info = Info::new(20, 24, vk::SurfaceFormatKHR::default());
-        let builder = info.to_builder().build();
+        let builder = info.clone().to_builder().build();
 
         assert_eq!(info, builder);
     }
