@@ -73,6 +73,7 @@ use {
         image::SampleCount,
     },
     ash::vk,
+    gpu_allocator::AllocationError,
     std::{
         cmp::Ordering,
         error::Error,
@@ -1048,6 +1049,22 @@ pub enum DriverError {
     ///
     /// Many drivers return this value for generic or unhandled error conditions.
     OutOfMemory,
+}
+
+impl DriverError {
+    fn from_alloc_err(err: AllocationError) -> Self {
+        match err {
+            AllocationError::OutOfMemory => Self::OutOfMemory,
+            AllocationError::InvalidAllocationCreateDesc
+            | AllocationError::InvalidAllocatorCreateDesc(_) => Self::InvalidData,
+            AllocationError::FailedToMap(_)
+            | AllocationError::NoCompatibleMemoryTypeFound
+            | AllocationError::Internal(_)
+            | AllocationError::BarrierLayoutNeedsDevice10
+            | AllocationError::CastableFormatsRequiresEnhancedBarriers
+            | AllocationError::CastableFormatsRequiresAtLeastDevice12 => Self::Unsupported,
+        }
+    }
 }
 
 impl Display for DriverError {

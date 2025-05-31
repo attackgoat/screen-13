@@ -106,7 +106,7 @@ impl Buffer {
             .queue_family_indices(&device.physical_device.queue_family_indices);
         let buffer = unsafe {
             device.create_buffer(&buffer_info, None).map_err(|err| {
-                warn!("{err}");
+                warn!("unable to create buffer: {err}");
 
                 DriverError::Unsupported
             })?
@@ -137,22 +137,36 @@ impl Buffer {
                     allocation_scheme: AllocationScheme::GpuAllocatorManaged,
                 })
                 .map_err(|err| {
-                    warn!("{err}");
+                    warn!("unable to allocate buffer memory: {err}");
 
-                    DriverError::Unsupported
+                    unsafe {
+                        device.destroy_buffer(buffer, None);
+                    }
+
+                    DriverError::from_alloc_err(err)
+                })
+                .and_then(|allocation| {
+                    if let Err(err) = unsafe {
+                        device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
+                    } {
+                        warn!("unable to bind buffer memory: {err}");
+
+                        if let Err(err) = allocator.free(allocation) {
+                            warn!("unable to free buffer allocation: {err}")
+                        }
+
+                        unsafe {
+                            device.destroy_buffer(buffer, None);
+                        }
+
+                        Err(DriverError::OutOfMemory)
+                    } else {
+                        Ok(allocation)
+                    }
                 })
         }?;
 
-        // Bind memory to the buffer
-        unsafe {
-            device
-                .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
-                .map_err(|err| {
-                    warn!("{err}");
-
-                    DriverError::Unsupported
-                })?
-        };
+        debug_assert_ne!(buffer, vk::Buffer::null());
 
         Ok(Self {
             accesses: Mutex::new(BufferAccess::new(info.size)),
@@ -455,7 +469,7 @@ impl Drop for Buffer {
 
             allocator.free(unsafe { ManuallyDrop::take(&mut self.allocation) })
         }
-        .unwrap_or_else(|_| warn!("Unable to free buffer allocation"));
+        .unwrap_or_else(|err| warn!("unable to free buffer allocation: {err}"));
 
         unsafe {
             self.device.destroy_buffer(self.buffer, None);

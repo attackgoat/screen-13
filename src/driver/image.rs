@@ -151,7 +151,7 @@ impl Image {
             create_info.queue_family_indices(&device.physical_device.queue_family_indices);
         let image = unsafe {
             device.create_image(&create_info, None).map_err(|err| {
-                warn!("{err}");
+                warn!("unable to create image: {err}");
 
                 DriverError::Unsupported
             })?
@@ -175,21 +175,36 @@ impl Image {
                     allocation_scheme: AllocationScheme::GpuAllocatorManaged,
                 })
                 .map_err(|err| {
-                    warn!("{err}");
+                    warn!("unable to allocate image memory: {err}");
 
-                    DriverError::Unsupported
+                    unsafe {
+                        device.destroy_image(image, None);
+                    }
+
+                    DriverError::from_alloc_err(err)
+                })
+                .and_then(|allocation| {
+                    if let Err(err) = unsafe {
+                        device.bind_image_memory(image, allocation.memory(), allocation.offset())
+                    } {
+                        warn!("unable to bind image memory: {err}");
+
+                        if let Err(err) = allocator.free(allocation) {
+                            warn!("unable to free image allocation: {err}")
+                        }
+
+                        unsafe {
+                            device.destroy_image(image, None);
+                        }
+
+                        Err(DriverError::OutOfMemory)
+                    } else {
+                        Ok(allocation)
+                    }
                 })
         }?;
 
-        unsafe {
-            device
-                .bind_image_memory(image, allocation.memory(), allocation.offset())
-                .map_err(|err| {
-                    warn!("{err}");
-
-                    DriverError::Unsupported
-                })?;
-        }
+        debug_assert_ne!(image, vk::Image::null());
 
         Ok(Self {
             accesses,
@@ -343,7 +358,7 @@ impl Image {
 
             allocator.free(allocation)
         }
-        .unwrap_or_else(|_| warn!("Unable to free image allocation"));
+        .unwrap_or_else(|err| warn!("unable to free image allocation: {err}"));
     }
 
     /// Consumes a Vulkan image created by some other library.
