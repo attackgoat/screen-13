@@ -21,6 +21,20 @@ pub struct Surface {
 }
 
 impl Surface {
+    /// Query surface capabilities
+    pub fn capabilities(this: &Self) -> Result<vk::SurfaceCapabilitiesKHR, DriverError> {
+        let surface_ext = Device::expect_surface_ext(&this.device);
+
+        unsafe {
+            surface_ext.get_physical_device_surface_capabilities(
+                *this.device.physical_device,
+                this.surface,
+            )
+        }
+        .inspect_err(|err| warn!("unable to get surface capabilities: {err}"))
+        .or(Err(DriverError::Unsupported))
+    }
+
     /// Create a surface from a raw window display handle.
     ///
     /// `device` must have been created with platform specific surface extensions enabled, acquired
@@ -98,6 +112,20 @@ impl Surface {
     /// supported values manually.
     pub fn linear_or_default(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
         Self::linear(formats).unwrap_or_else(|| formats.first().copied().unwrap_or_default())
+    }
+
+    /// Query supported presentation modes.
+    pub fn present_modes(this: &Self) -> Result<Vec<vk::PresentModeKHR>, DriverError> {
+        let surface_ext = Device::expect_surface_ext(&this.device);
+
+        unsafe {
+            surface_ext.get_physical_device_surface_present_modes(
+                *this.device.physical_device,
+                this.surface,
+            )
+        }
+        .inspect_err(|err| warn!("unable to get surface present modes: {err}"))
+        .or(Err(DriverError::Unsupported))
     }
 
     /// Helper function to automatically select the best sRGB format, if one is available.

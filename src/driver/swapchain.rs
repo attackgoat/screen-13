@@ -250,50 +250,29 @@ impl Swapchain {
     fn recreate_swapchain(&mut self) -> Result<(), DriverError> {
         Self::destroy_swapchain(&self.device, &mut self.old_swapchain);
 
-        let (surface_capabilities, supported_present_modes) = {
-            let surface_ext = Device::expect_surface_ext(&self.device);
-            let surface_capabilities = unsafe {
-                surface_ext.get_physical_device_surface_capabilities(
-                    *self.device.physical_device,
-                    *self.surface,
-                )
-            }
-            .inspect_err(|err| warn!("unable to get surface capabilities: {err}"))
-            .or(Err(DriverError::Unsupported))?;
-
-            let supported_present_modes = unsafe {
-                surface_ext.get_physical_device_surface_present_modes(
-                    *self.device.physical_device,
-                    *self.surface,
-                )
-            }
-            .inspect_err(|err| warn!("unable to get surface present modes: {err}"))
-            .or(Err(DriverError::Unsupported))?;
-
-            (surface_capabilities, supported_present_modes)
-        };
+        let surface_caps = Surface::capabilities(&self.surface)?;
+        let present_modes = Surface::present_modes(&self.surface)?;
 
         let desired_image_count =
-            Self::clamp_desired_image_count(self.info.desired_image_count, surface_capabilities);
+            Self::clamp_desired_image_count(self.info.desired_image_count, surface_caps);
 
-        let image_usage =
-            self.supported_surface_usage(surface_capabilities.supported_usage_flags)?;
+        let image_usage = self.supported_surface_usage(surface_caps.supported_usage_flags)?;
 
-        let (surface_width, surface_height) = match surface_capabilities.current_extent.width {
+        let (surface_width, surface_height) = match surface_caps.current_extent.width {
             std::u32::MAX => (
                 // TODO: Maybe handle this case with aspect-correct clamping?
                 self.info.width.clamp(
-                    surface_capabilities.min_image_extent.width,
-                    surface_capabilities.max_image_extent.width,
+                    surface_caps.min_image_extent.width,
+                    surface_caps.max_image_extent.width,
                 ),
                 self.info.height.clamp(
-                    surface_capabilities.min_image_extent.height,
-                    surface_capabilities.max_image_extent.height,
+                    surface_caps.min_image_extent.height,
+                    surface_caps.max_image_extent.height,
                 ),
             ),
             _ => (
-                surface_capabilities.current_extent.width,
-                surface_capabilities.current_extent.height,
+                surface_caps.current_extent.width,
+                surface_caps.current_extent.height,
             ),
         };
 
@@ -305,16 +284,17 @@ impl Swapchain {
             .info
             .present_modes
             .iter()
-            .find(|mode| supported_present_modes.contains(mode))
-            .unwrap_or(&vk::PresentModeKHR::FIFO);
+            .copied()
+            .find(|mode| present_modes.contains(mode))
+            .unwrap_or(vk::PresentModeKHR::FIFO);
 
-        let pre_transform = if surface_capabilities
+        let pre_transform = if surface_caps
             .supported_transforms
             .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
         {
             vk::SurfaceTransformFlagsKHR::IDENTITY
         } else {
-            surface_capabilities.current_transform
+            surface_caps.current_transform
         };
 
         let swapchain_ext = Device::expect_swapchain_ext(&self.device);
@@ -331,7 +311,7 @@ impl Swapchain {
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(*present_mode)
+            .present_mode(present_mode)
             .clipped(true)
             .old_swapchain(self.swapchain)
             .image_array_layers(1);
