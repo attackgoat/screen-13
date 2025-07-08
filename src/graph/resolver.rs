@@ -2278,13 +2278,17 @@ impl Resolver {
                         next_access,
                     );
 
+                    // Color Attachment Read/Write (blending) will prevent discarding contents.
+                    // Note that we must check "not-read" because some reads write!
+                    let discard_contents =
+                        *prev_access == AccessType::Nothing || !is_read_access(*next_access);
+
                     ImageBarrier {
                         next_accesses: from_ref(next_access),
                         next_layout: image_access_layout(*next_access),
                         previous_accesses: from_ref(prev_access),
                         previous_layout: image_access_layout(*prev_access),
-                        discard_contents: *prev_access == AccessType::Nothing
-                            || is_write_access(*next_access),
+                        discard_contents,
                         src_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                         dst_queue_family_index: vk::QUEUE_FAMILY_IGNORED,
                         image: *image,
