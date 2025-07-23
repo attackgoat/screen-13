@@ -7,10 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## Added
+
+- Image format texel block size/extent support functions (`format_texel_block_size()`/`format_texel_block_extent()`)
+- `Surface::capabilities()` and `Surface::present_modes()` support functions
+
+## Changed
+
+- `Swapchain` allows configurable present modes
+- Custom `ImageType` enum removed and replaced with existing `vk::ImageType`
+
 ## Fixed
 
 - Issue where RenderDoc clears images between renderpasses ("undefined img") due to incorrect usage
   of image layout barriers
+- Out-of-memory errors during image and buffer creation leaked vulkan resource handles
 
 ## [0.12.6] - 2025-05-10
 
