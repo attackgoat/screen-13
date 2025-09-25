@@ -133,14 +133,13 @@ fn main() -> anyhow::Result<()> {
         }
 
         // Hit F12 to enable exclusive fullscreen
-        if input.key_pressed(KeyCode::F12) {
-            if let Some(monitor) = frame.window.current_monitor() {
-                if let Some(video_mode) = monitor.video_modes().next() {
-                    frame
-                        .window
-                        .set_fullscreen(Some(Fullscreen::Exclusive(video_mode)));
-                }
-            }
+        if input.key_pressed(KeyCode::F12)
+            && let Some(monitor) = frame.window.current_monitor()
+            && let Some(video_mode) = monitor.video_modes().next()
+        {
+            frame
+                .window
+                .set_fullscreen(Some(Fullscreen::Exclusive(video_mode)));
         }
 
         // Hit Escape to cancel fullscreen or exit

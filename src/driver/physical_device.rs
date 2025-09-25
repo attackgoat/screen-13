@@ -311,15 +311,21 @@ impl PhysicalDevice {
         let supports_ray_trace = extensions.contains(khr::ray_tracing_pipeline::NAME);
 
         // Gather optional features and properties of the physical device
-        let index_type_uint8_features = supports_index_type_uint8
-            .then(|| index_type_u8_features.into())
-            .unwrap_or_default();
-        let ray_query_features = supports_ray_query
-            .then(|| ray_query_features.into())
-            .unwrap_or_default();
-        let ray_trace_features = supports_ray_trace
-            .then(|| ray_trace_features.into())
-            .unwrap_or_default();
+        let index_type_uint8_features = if supports_index_type_uint8 {
+            index_type_u8_features.into()
+        } else {
+            Default::default()
+        };
+        let ray_query_features = if supports_ray_query {
+            ray_query_features.into()
+        } else {
+            Default::default()
+        };
+        let ray_trace_features = if supports_ray_trace {
+            ray_trace_features.into()
+        } else {
+            Default::default()
+        };
         let accel_struct_properties = supports_accel_struct.then(|| accel_struct_properties.into());
         let ray_trace_properties = supports_ray_trace.then(|| ray_trace_properties.into());
 

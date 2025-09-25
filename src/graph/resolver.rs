@@ -989,56 +989,54 @@ impl Resolver {
                 }
 
                 // Stored depth/stencil attachment
-                if !depth_stencil_set {
-                    if let Some(stored_attachment) = exec.depth_stencil_store {
-                        let attachment = &mut attachments[color_attachment_count];
-                        attachment.fmt = stored_attachment.format;
-                        attachment.sample_count = stored_attachment.sample_count;
-                        attachment.final_layout = if stored_attachment
-                            .aspect_mask
-                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                        {
-                            attachment.store_op = vk::AttachmentStoreOp::STORE;
-                            attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
+                if !depth_stencil_set && let Some(stored_attachment) = exec.depth_stencil_store {
+                    let attachment = &mut attachments[color_attachment_count];
+                    attachment.fmt = stored_attachment.format;
+                    attachment.sample_count = stored_attachment.sample_count;
+                    attachment.final_layout = if stored_attachment
+                        .aspect_mask
+                        .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                    {
+                        attachment.store_op = vk::AttachmentStoreOp::STORE;
+                        attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
 
-                            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                        } else if stored_attachment
-                            .aspect_mask
-                            .contains(vk::ImageAspectFlags::DEPTH)
-                        {
-                            attachment.store_op = vk::AttachmentStoreOp::STORE;
+                        vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    } else if stored_attachment
+                        .aspect_mask
+                        .contains(vk::ImageAspectFlags::DEPTH)
+                    {
+                        attachment.store_op = vk::AttachmentStoreOp::STORE;
 
-                            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                        } else {
-                            attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
+                        vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                    } else {
+                        attachment.stencil_store_op = vk::AttachmentStoreOp::STORE;
 
-                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                        };
-                        depth_stencil_set = true;
-                    }
+                        vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                    };
+                    depth_stencil_set = true;
                 }
 
                 // Resolved depth/stencil attachment
-                if !depth_stencil_resolve_set {
-                    if let Some((resolved_attachment, ..)) = exec.depth_stencil_resolve {
-                        let attachment = attachments.last_mut().unwrap();
-                        attachment.fmt = resolved_attachment.format;
-                        attachment.sample_count = resolved_attachment.sample_count;
-                        attachment.final_layout = if resolved_attachment
-                            .aspect_mask
-                            .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                        {
-                            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                        } else if resolved_attachment
-                            .aspect_mask
-                            .contains(vk::ImageAspectFlags::DEPTH)
-                        {
-                            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-                        } else {
-                            vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
-                        };
-                        depth_stencil_resolve_set = true;
-                    }
+                if !depth_stencil_resolve_set
+                    && let Some((resolved_attachment, ..)) = exec.depth_stencil_resolve
+                {
+                    let attachment = attachments.last_mut().unwrap();
+                    attachment.fmt = resolved_attachment.format;
+                    attachment.sample_count = resolved_attachment.sample_count;
+                    attachment.final_layout = if resolved_attachment
+                        .aspect_mask
+                        .contains(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                    {
+                        vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+                    } else if resolved_attachment
+                        .aspect_mask
+                        .contains(vk::ImageAspectFlags::DEPTH)
+                    {
+                        vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+                    } else {
+                        vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL
+                    };
+                    depth_stencil_resolve_set = true;
                 }
             }
         }

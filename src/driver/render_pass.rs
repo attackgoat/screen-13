@@ -124,17 +124,16 @@ impl RenderPass {
             .copied()
             .map(Into::into)
             .collect::<Box<[_]>>();
-        let correlated_view_masks = info
-            .subpasses
-            .iter()
-            .any(|subpass| subpass.view_mask != 0)
-            .then(|| {
+        let correlated_view_masks = if info.subpasses.iter().any(|subpass| subpass.view_mask != 0) {
+            {
                 info.subpasses
                     .iter()
                     .map(|subpass| subpass.correlated_view_mask)
                     .collect::<Box<_>>()
-            })
-            .unwrap_or_default();
+            }
+        } else {
+            Default::default()
+        };
         let dependencies = info
             .dependencies
             .iter()
