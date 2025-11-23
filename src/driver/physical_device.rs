@@ -6,7 +6,7 @@ use {
     log::{debug, error},
     std::{
         collections::HashSet,
-        ffi::CStr,
+        ffi::{CStr, c_char},
         fmt::{Debug, Formatter},
         ops::Deref,
     },
@@ -14,7 +14,7 @@ use {
 
 // TODO: There is a bunch of unsafe cstr handling here - does not check for null-termination
 
-fn vk_cstr_to_string_lossy(cstr: &[i8]) -> String {
+fn vk_cstr_to_string_lossy(cstr: &[c_char]) -> String {
     unsafe { CStr::from_ptr(cstr.as_ptr()) }
         .to_string_lossy()
         .to_string()
