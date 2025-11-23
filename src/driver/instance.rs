@@ -155,7 +155,7 @@ impl Instance {
             .chain(unsafe { Self::extension_names(debug).into_iter() })
             .collect::<Box<[_]>>();
         let layer_names = Self::layer_names(debug);
-        let layer_names: Vec<*const i8> = layer_names
+        let layer_names: Vec<*const c_char> = layer_names
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
