@@ -316,16 +316,16 @@ impl Device {
         display_window: bool,
     ) -> Result<Self, DriverError> {
         let debug = Instance::is_debug(&instance);
+        let mut debug_settings = AllocatorDebugSettings::default();
+        debug_settings.log_leaks_on_shutdown = debug;
+        debug_settings.log_memory_information = debug;
+        debug_settings.log_allocations = debug;
+
         let allocator = Allocator::new(&AllocatorCreateDesc {
             instance: (*instance).clone(),
             device: device.clone(),
             physical_device: *physical_device,
-            debug_settings: AllocatorDebugSettings {
-                log_leaks_on_shutdown: debug,
-                log_memory_information: debug,
-                log_allocations: debug,
-                ..Default::default()
-            },
+            debug_settings,
             buffer_device_address: true,
             allocation_sizes: Default::default(),
         })
