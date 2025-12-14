@@ -87,8 +87,7 @@ impl Instance {
         if !xr_instance
             .enumerate_environment_blend_modes(system, xr::ViewConfigurationType::PRIMARY_STEREO)
             .unwrap_or_default()
-            .iter()
-            .any(|&blend_mode| blend_mode == xr::EnvironmentBlendMode::OPAQUE)
+            .contains(&xr::EnvironmentBlendMode::OPAQUE)
         {
             error!("OpenXR opaque blend mode not supported");
 

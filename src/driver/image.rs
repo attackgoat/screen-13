@@ -1155,9 +1155,10 @@ impl From<UninitializedFieldError> for ImageViewInfoBuilderError {
 /// Specifies sample counts supported for an image used for storage operation.
 ///
 /// Values must not exceed the device limits specified by [Device.physical_device.props.limits].
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum SampleCount {
     /// Single image sample. This is the usual mode.
+    #[default]
     Type1,
 
     /// Multiple image samples.
@@ -1205,12 +1206,6 @@ impl From<SampleCount> for vk::SampleCountFlags {
             SampleCount::Type32 => Self::TYPE_32,
             SampleCount::Type64 => Self::TYPE_64,
         }
-    }
-}
-
-impl Default for SampleCount {
-    fn default() -> Self {
-        Self::Type1
     }
 }
 
