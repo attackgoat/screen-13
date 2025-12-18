@@ -4,6 +4,7 @@ use {
     clap::Parser,
     image::ImageReader,
     log::info,
+    screen_13::prelude::LazyPool,
     screen_13_fx::*,
     screen_13_imgui::prelude::*,
     screen_13_window::WindowBuilder,
@@ -22,6 +23,7 @@ fn main() -> anyhow::Result<()> {
         .window(|builder| builder.with_inner_size(LogicalSize::new(1024.0f64, 768.0f64)))
         .build()?;
     let display = ComputePresenter::new(&window.device)?;
+    let mut pool = LazyPool::new(&window.device);
     let mut imgui = ImGui::new(&window.device);
     let mut image_loader = ImageLoader::new(&window.device)?;
     let mut transition_pipeline = TransitionPipeline::new(&window.device);
@@ -94,8 +96,9 @@ fn main() -> anyhow::Result<()> {
             0.016,
             frame.events,
             frame.window,
+            &mut pool,
             frame.render_graph,
-            |ui| {
+            |ui, _, _| {
                 ui.window("Transitions example")
                     .position([10.0, 10.0], Condition::FirstUseEver)
                     .size([340.0, 250.0], Condition::FirstUseEver)

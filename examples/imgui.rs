@@ -50,8 +50,9 @@ fn main() -> Result<(), WindowError> {
             0.016,
             frame.events,
             frame.window,
+            &mut pool,
             frame.render_graph,
-            |ui| {
+            |ui, _, _| {
                 ui.window("Hello world")
                     .position([10.0, 10.0], Condition::FirstUseEver)
                     .size([340.0, 250.0], Condition::FirstUseEver)

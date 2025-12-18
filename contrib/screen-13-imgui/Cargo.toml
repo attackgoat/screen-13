@@ -7,11 +7,8 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-bytemuck = "1.14"
-
-imgui = "0.12" 
-imgui-winit-support = { git = "https://github.com/julcst/imgui-winit-support.git", rev = "29584c863c5517a7f30e09205b84e1601f4ddb92" } # TODO: https://github.com/imgui-rs/imgui-rs/issues/781
-
+bytemuck = "1.24"
+imgui = "0.12"
+imgui-winit-support = "0.13"
 inline-spirv = "0.2"
 screen-13 = { path = "../.." }
-screen-13-fx = { path = "../screen-13-fx" }

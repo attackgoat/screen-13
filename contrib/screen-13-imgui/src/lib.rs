@@ -22,14 +22,12 @@ pub struct ImGui {
     font_atlas_image: Option<Arc<Lease<Image>>>,
     pipeline: Arc<GraphicPipeline>,
     platform: WinitPlatform,
-    pool: HashPool,
 }
 
 impl ImGui {
     pub fn new(device: &Arc<Device>) -> Self {
         let mut context = Context::create();
-        let platform = WinitPlatform::init(&mut context);
-        let pool = HashPool::new(device);
+        let platform = WinitPlatform::new(&mut context);
         let pipeline = Arc::new(
             GraphicPipeline::create(
                 device,
@@ -49,26 +47,29 @@ impl ImGui {
             font_atlas_image: None,
             pipeline,
             platform,
-            pool,
         }
     }
 
     // TODO: This produces an image which is RGBA8 UNORM and has STORAGE set. *We* don't need storage here and should instead ask the user what settings to give the output image.....
-    pub fn draw(
+    pub fn draw<P>(
         &mut self,
         dt: f32,
         events: &[Event<()>],
         window: &Window,
+        pool: &mut P,
         render_graph: &mut RenderGraph,
-        ui_func: impl FnOnce(&mut Ui),
-    ) -> ImageLeaseNode {
+        ui_func: impl FnOnce(&mut Ui, &mut P, &mut RenderGraph),
+    ) -> ImageLeaseNode
+    where
+        P: Pool<BufferInfo, Buffer> + Pool<ImageInfo, Image>,
+    {
         let hidpi = self.platform.hidpi_factor();
 
         self.platform
             .attach_window(self.context.io_mut(), window, HiDpiMode::Default);
 
         if self.font_atlas_image.is_none() || self.platform.hidpi_factor() != hidpi {
-            self.lease_font_atlas_image(render_graph);
+            self.lease_font_atlas_image(pool, render_graph);
         }
 
         let io = self.context.io_mut();
@@ -85,14 +86,13 @@ impl ImGui {
         // Let the caller draw the GUI
         let ui = self.context.frame();
 
-        ui_func(ui);
+        ui_func(ui, pool, render_graph);
 
         self.platform.prepare_render(ui, window);
         let draw_data = self.context.render();
 
         let image = render_graph.bind_node({
-            let mut image = self
-                .pool
+            let mut image = pool
                 .lease(ImageInfo::image_2d(
                     window.inner_size().width,
                     window.inner_size().height,
@@ -120,8 +120,7 @@ impl ImGui {
 
         for draw_list in draw_data.draw_lists() {
             let indices = cast_slice(draw_list.idx_buffer());
-            let mut index_buf = self
-                .pool
+            let mut index_buf = pool
                 .lease(BufferInfo::host_mem(
                     indices.len() as _,
                     vk::BufferUsageFlags::INDEX_BUFFER,
@@ -136,8 +135,7 @@ impl ImGui {
 
             let vertices = draw_list.vtx_buffer();
             let vertex_buf_len = vertices.len() * 20;
-            let mut vertex_buf = self
-                .pool
+            let mut vertex_buf = pool
                 .lease(BufferInfo::host_mem(
                     vertex_buf_len as _,
                     vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -219,7 +217,10 @@ impl ImGui {
         image
     }
 
-    fn lease_font_atlas_image(&mut self, render_graph: &mut RenderGraph) {
+    fn lease_font_atlas_image<P>(&mut self, pool: &mut P, render_graph: &mut RenderGraph)
+    where
+        P: Pool<BufferInfo, Buffer> + Pool<ImageInfo, Image>,
+    {
         use imgui::{FontConfig, FontGlyphRanges, FontSource};
 
         let hidpi_factor = self.platform.hidpi_factor();
@@ -253,8 +254,7 @@ impl ImGui {
 
         let texture = fonts.build_rgba32_texture(); // TODO: Fix fb channel writes and use alpha8!
         let temp_buf_len = texture.data.len();
-        let mut temp_buf = self
-            .pool
+        let mut temp_buf = pool
             .lease(BufferInfo::host_mem(
                 temp_buf_len as _,
                 vk::BufferUsageFlags::TRANSFER_SRC,
@@ -268,8 +268,7 @@ impl ImGui {
 
         let temp_buf = render_graph.bind_node(temp_buf);
         let image = render_graph.bind_node({
-            let mut image = self
-                .pool
+            let mut image = pool
                 .lease(ImageInfo::image_2d(
                     texture.width,
                     texture.height,
